@@ -21,7 +21,10 @@ const TIME_UNIT_MULTIPLIERS: Record<TimeUnit, number> = {
 };
 
 const sumValues = (values: number[]) => values.reduce((total, value) => total + value, 0);
-const multiplyValues = (values: number[]) => values.reduce((total, value) => total * value, 1);
+const getDefaultPair = (node: EconNodeData, fallback: { left: number; right: number }) => ({
+  left: node.leftValue ?? fallback.left,
+  right: node.rightValue ?? fallback.right,
+});
 
 const OPERATORS: Record<string, { precedence: number; assoc: 'left' | 'right'; args: number }> = {
   '+': { precedence: 1, assoc: 'left', args: 2 },
@@ -263,6 +266,16 @@ const evaluateFormula = (formula: string, variables: Record<string, number>) => 
   return evaluateRpn(rpn, variables);
 };
 
+const normalizeMathPort = (port?: string) => {
+  if (port === 'left') {
+    return '1';
+  }
+  if (port === 'right') {
+    return '2';
+  }
+  return port;
+};
+
 const splitBinaryInputs = (incomingEdges: EconEdgeData[], incomingValues: number[]) => {
   const leftValues: number[] = [];
   const rightValues: number[] = [];
@@ -270,11 +283,12 @@ const splitBinaryInputs = (incomingEdges: EconEdgeData[], incomingValues: number
 
   incomingEdges.forEach((edge, index) => {
     const value = incomingValues[index] ?? 0;
-    if (edge.targetPort === 'left') {
+    const port = normalizeMathPort(edge.targetPort);
+    if (port === '1') {
       leftValues.push(value);
       return;
     }
-    if (edge.targetPort === 'right') {
+    if (port === '2') {
       rightValues.push(value);
       return;
     }
@@ -399,34 +413,77 @@ export const computeGraph = (nodes: EconNodeData[], edges: EconEdgeData[]): Grap
           node.computedValue = node.baseValue ?? 0;
           break;
         case 'add':
-          if (incomingValues.length === 0) {
-            throw new Error('Missing inputs');
+          {
+            const { left, right, leftCount, rightCount } = splitBinaryInputs(incomingEdges, incomingValues);
+            const defaults = getDefaultPair(node, { left: 0, right: 0 });
+            const leftValue = leftCount > 0 ? left : defaults.left;
+            const rightValue = rightCount > 0 ? right : defaults.right;
+            node.input1Value = left;
+            node.input2Value = right;
+            node.input1Connected = leftCount > 0;
+            node.input2Connected = rightCount > 0;
+            node.computedValue = leftValue + rightValue;
           }
-          node.computedValue = sumValues(incomingValues);
           break;
         case 'subtract': {
-          const { left, right, leftCount, rightCount } = splitBinaryInputs(incomingEdges, incomingValues);
-          if (leftCount === 0 || rightCount === 0) {
-            throw new Error('Subtract requires two inputs');
+          if (incomingValues.length === 0) {
+            const { left, right } = getDefaultPair(node, { left: 0, right: 0 });
+            node.input1Value = undefined;
+            node.input2Value = undefined;
+            node.input1Connected = false;
+            node.input2Connected = false;
+            node.computedValue = left - right;
+            break;
           }
-          node.computedValue = left - right;
+          const { left, right, leftCount, rightCount } = splitBinaryInputs(incomingEdges, incomingValues);
+          const defaults = getDefaultPair(node, { left: 0, right: 0 });
+          const leftValue = leftCount > 0 ? left : defaults.left;
+          const rightValue = rightCount > 0 ? right : defaults.right;
+          node.input1Value = left;
+          node.input2Value = right;
+          node.input1Connected = leftCount > 0;
+          node.input2Connected = rightCount > 0;
+          node.computedValue = leftValue - rightValue;
           break;
         }
         case 'multiply':
-          if (incomingValues.length === 0) {
-            throw new Error('Missing inputs');
+          {
+            const { left, right, leftCount, rightCount } = splitBinaryInputs(incomingEdges, incomingValues);
+            const defaults = getDefaultPair(node, { left: 1, right: 1 });
+            const leftValue = leftCount > 0 ? left : defaults.left;
+            const rightValue = rightCount > 0 ? right : defaults.right;
+            node.input1Value = left;
+            node.input2Value = right;
+            node.input1Connected = leftCount > 0;
+            node.input2Connected = rightCount > 0;
+            node.computedValue = leftValue * rightValue;
           }
-          node.computedValue = multiplyValues(incomingValues);
           break;
         case 'divide': {
-          const { left, right, leftCount, rightCount } = splitBinaryInputs(incomingEdges, incomingValues);
-          if (leftCount === 0 || rightCount === 0) {
-            throw new Error('Divide requires two inputs');
+          if (incomingValues.length === 0) {
+            const { left, right } = getDefaultPair(node, { left: 1, right: 1 });
+            node.input1Value = undefined;
+            node.input2Value = undefined;
+            node.input1Connected = false;
+            node.input2Connected = false;
+            if (right === 0) {
+              throw new Error('Division by zero');
+            }
+            node.computedValue = left / right;
+            break;
           }
-          if (right === 0) {
+          const { left, right, leftCount, rightCount } = splitBinaryInputs(incomingEdges, incomingValues);
+          const defaults = getDefaultPair(node, { left: 1, right: 1 });
+          const leftValue = leftCount > 0 ? left : defaults.left;
+          const rightValue = rightCount > 0 ? right : defaults.right;
+          node.input1Value = left;
+          node.input2Value = right;
+          node.input1Connected = leftCount > 0;
+          node.input2Connected = rightCount > 0;
+          if (rightValue === 0) {
             throw new Error('Division by zero');
           }
-          node.computedValue = left / right;
+          node.computedValue = leftValue / rightValue;
           break;
         }
         case 'calc': {

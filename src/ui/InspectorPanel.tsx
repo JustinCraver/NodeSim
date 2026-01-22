@@ -10,8 +10,8 @@ const TIME_UNIT_OPTIONS: { value: TimeUnit; label: string }[] = [
 ];
 
 const BINARY_PORT_OPTIONS: PortDef[] = [
-  { id: 'left', label: 'Left' },
-  { id: 'right', label: 'Right' },
+  { id: '1', label: '1' },
+  { id: '2', label: '2' },
 ];
 
 type InspectorPanelProps = {
@@ -60,9 +60,20 @@ export const InspectorPanel = ({
     const sourceOutputs = sourceNode?.kind === 'custom' ? sourceNode.custom?.outputs ?? [] : [];
     const targetInputs = targetNode?.kind === 'custom' ? targetNode.custom?.inputs ?? [] : [];
     const targetMathPorts =
-      targetNode?.kind === 'subtract' || targetNode?.kind === 'divide' ? BINARY_PORT_OPTIONS : [];
+      targetNode?.kind === 'add' ||
+      targetNode?.kind === 'subtract' ||
+      targetNode?.kind === 'multiply' ||
+      targetNode?.kind === 'divide'
+        ? BINARY_PORT_OPTIONS
+        : [];
     const targetPortOptions = targetNode?.kind === 'custom' ? targetInputs : targetMathPorts;
     const showTargetPorts = targetNode?.kind === 'custom' || targetMathPorts.length > 0;
+    const targetPortValue =
+      edge.targetPort === 'left'
+        ? '1'
+        : edge.targetPort === 'right'
+          ? '2'
+          : edge.targetPort ?? '';
 
     return (
       <div className="panel">
@@ -99,7 +110,7 @@ export const InspectorPanel = ({
           <label className="panel-section">
             <span className="label">Target Port</span>
             <select
-              value={edge.targetPort ?? ''}
+              value={targetPortValue}
               onChange={(event) =>
                 onChangeEdge(edge.id, { targetPort: event.target.value === '' ? undefined : event.target.value })
               }
@@ -290,6 +301,21 @@ export const InspectorPanel = ({
           <span className="label">Value</span>
           <input type="number" value={activeNode.baseValue ?? ''} onChange={handleNumberChange('baseValue')} />
         </label>
+      )}
+      {(activeNode.kind === 'add' ||
+        activeNode.kind === 'subtract' ||
+        activeNode.kind === 'multiply' ||
+        activeNode.kind === 'divide') && (
+        <>
+          <label className="panel-section">
+            <span className="label">Input 1 Value</span>
+            <input type="number" value={activeNode.leftValue ?? ''} onChange={handleNumberChange('leftValue')} />
+          </label>
+          <label className="panel-section">
+            <span className="label">Input 2 Value</span>
+            <input type="number" value={activeNode.rightValue ?? ''} onChange={handleNumberChange('rightValue')} />
+          </label>
+        </>
       )}
       {activeNode.kind === 'calc' && (
         <label className="panel-section">

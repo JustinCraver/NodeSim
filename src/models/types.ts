@@ -33,6 +33,13 @@ export interface EconNodeData {
   baseValue?: number;
   timeUnit?: TimeUnit;
   formula?: string;
+  leftValue?: number;
+  rightValue?: number;
+  input1Value?: number;
+  input2Value?: number;
+  input1Connected?: boolean;
+  input2Connected?: boolean;
+  portOverlay?: string;
   interestRateAnnual?: number;
   targetAmount?: number;
   custom?: CustomNodeConfig;
