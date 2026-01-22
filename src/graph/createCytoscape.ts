@@ -4,6 +4,7 @@ import { computeGraph } from '../engine/computeGraph';
 
 type GraphCallbacks = {
   onSelectNode?: (node: EconNodeData | null) => void;
+  onSelectEdge?: (edge: EconEdgeData | null) => void;
 };
 
 const formatCurrency = (value: number) => {
@@ -126,6 +127,14 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
         },
       },
       {
+        selector: 'edge:selected',
+        style: {
+          width: 3,
+          'line-color': '#0ea5e9',
+          'target-arrow-color': '#0ea5e9',
+        },
+      },
+      {
         selector: 'node[kind = "expense"]',
         style: {
           'background-color': '#f97316',
@@ -164,6 +173,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
   recompute(cy);
 
   cy.on('select', 'node', (event) => {
+    cy.edges(':selected').unselect();
     const node = event.target.data() as EconNodeData;
     callbacks.onSelectNode?.({ ...node });
   });
@@ -172,7 +182,16 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     callbacks.onSelectNode?.(null);
   });
 
-  let edgeSource: string | null = null;
+  cy.on('select', 'edge', (event) => {
+    cy.nodes(':selected').unselect();
+    const edge = event.target.data() as EconEdgeData;
+    callbacks.onSelectEdge?.({ ...edge });
+  });
+
+  cy.on('unselect', 'edge', () => {
+    callbacks.onSelectEdge?.(null);
+  });
+
   let nodeSequence = 1;
 
   const createNodeAt = (position: { x: number; y: number }) => {
@@ -195,42 +214,33 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     cy.getElementById(id)?.select();
   };
 
-  cy.on('tap', 'node', (event) => {
-    const node = event.target;
-    if (!edgeSource) {
-      edgeSource = node.id();
-      return;
-    }
-    if (edgeSource === node.id()) {
-      edgeSource = null;
-      return;
-    }
-    const edgeId = `edge-${edgeSource}-${node.id()}-${Date.now()}`;
-    cy.add({
-      group: 'edges',
-      data: {
-        id: edgeId,
-        source: edgeSource,
-        target: node.id(),
-        kind: 'flow',
-      },
-    });
-    edgeSource = null;
-    recompute(cy);
-  });
-
-  cy.on('tap', (event) => {
-    if (event.target === cy) {
-      edgeSource = null;
-    }
-  });
-
   cy.on('cxttap', (event) => {
     if (event.target !== cy) {
       return;
     }
-    edgeSource = null;
     createNodeAt(event.position);
+  });
+
+  cy.on('cxttap', 'node', (event) => {
+    const targetNode = event.target;
+    const selectedNode = cy.nodes(':selected').first();
+    if (!selectedNode || selectedNode.empty()) {
+      return;
+    }
+    if (selectedNode.id() === targetNode.id()) {
+      return;
+    }
+    const edgeId = `edge-${selectedNode.id()}-${targetNode.id()}-${Date.now()}`;
+    cy.add({
+      group: 'edges',
+      data: {
+        id: edgeId,
+        source: selectedNode.id(),
+        target: targetNode.id(),
+        kind: 'flow',
+      },
+    });
+    recompute(cy);
   });
 
   cy.on('remove add', 'edge', () => {
@@ -276,12 +286,25 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     setTimeout(() => recompute(cy), 0);
   };
 
+  const deleteEdge = (edgeId: string) => {
+    const edge = cy.getElementById(edgeId);
+    if (!edge) {
+      return;
+    }
+    if (edge.selected()) {
+      edge.unselect();
+    }
+    edge.remove();
+    setTimeout(() => recompute(cy), 0);
+  };
+
   const exportGraph = (): GraphData => graphDataFromCy(cy);
 
   return {
     cy,
     updateNodeData,
     deleteNode,
+    deleteEdge,
     importGraph,
     exportGraph,
   };

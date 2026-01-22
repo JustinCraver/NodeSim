@@ -1,5 +1,5 @@
 import type React from 'react';
-import type { EconNodeData, TimeUnit } from '../models/types';
+import type { EconEdgeData, EconNodeData, TimeUnit } from '../models/types';
 
 const TIME_UNIT_OPTIONS: { value: TimeUnit; label: string }[] = [
   { value: 'per_day', label: 'Per Day' },
@@ -10,16 +10,54 @@ const TIME_UNIT_OPTIONS: { value: TimeUnit; label: string }[] = [
 
 type InspectorPanelProps = {
   node: EconNodeData | null;
+  edge: EconEdgeData | null;
   onChange: (nodeId: string, data: Partial<EconNodeData>) => void;
-  onDelete: (nodeId: string) => void;
+  onDeleteNode: (nodeId: string) => void;
+  onDeleteEdge: (edgeId: string) => void;
 };
 
-export const InspectorPanel = ({ node, onChange, onDelete }: InspectorPanelProps) => {
-  if (!node) {
+export const InspectorPanel = ({ node, edge, onChange, onDeleteNode, onDeleteEdge }: InspectorPanelProps) => {
+  if (!node && !edge) {
     return (
       <div className="panel">
         <h2>Inspector</h2>
-        <p>Select a node to edit its properties.</p>
+        <p>Select a node or connection to edit its properties.</p>
+      </div>
+    );
+  }
+
+  if (!node && edge) {
+    return (
+      <div className="panel">
+        <h2>Inspector</h2>
+        <div className="panel-section">
+          <div className="label">Connection</div>
+          <div>
+            {edge.source} → {edge.target}
+          </div>
+        </div>
+        <div className="panel-section">
+          <div className="label">Type</div>
+          <div>{edge.kind}</div>
+        </div>
+        <div className="panel-section">
+          <button
+            className="delete-button"
+            onClick={() => onDeleteEdge(edge.id)}
+            style={{
+              backgroundColor: '#dc2626',
+              color: 'white',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              width: '100%',
+              marginTop: '16px',
+            }}
+          >
+            Delete Connection
+          </button>
+        </div>
       </div>
     );
   }
@@ -96,7 +134,7 @@ export const InspectorPanel = ({ node, onChange, onDelete }: InspectorPanelProps
       <div className="panel-section">
         <button
           className="delete-button"
-          onClick={() => onDelete(node.id)}
+          onClick={() => onDeleteNode(node.id)}
           style={{
             backgroundColor: '#dc2626',
             color: 'white',

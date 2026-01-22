@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { EconNodeData, GraphData } from './models/types';
+import type { EconEdgeData, EconNodeData, GraphData } from './models/types';
 import { createCytoscape } from './graph/createCytoscape';
 import { InspectorPanel } from './ui/InspectorPanel';
 import { Toolbar } from './ui/Toolbar';
@@ -15,6 +15,7 @@ export const App = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<GraphController | null>(null);
   const [selectedNode, setSelectedNode] = useState<EconNodeData | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<EconEdgeData | null>(null);
   const [disableCoffee, setDisableCoffee] = useState(false);
 
   useEffect(() => {
@@ -22,7 +23,18 @@ export const App = () => {
       return;
     }
     controllerRef.current = createCytoscape(containerRef.current, demoGraph as GraphData, {
-      onSelectNode: setSelectedNode,
+      onSelectNode: (node) => {
+        setSelectedNode(node);
+        if (node) {
+          setSelectedEdge(null);
+        }
+      },
+      onSelectEdge: (edge) => {
+        setSelectedEdge(edge);
+        if (edge) {
+          setSelectedNode(null);
+        }
+      },
     });
   }, []);
 
@@ -45,7 +57,17 @@ export const App = () => {
     }
     // Clear selection first to prevent any race conditions
     setSelectedNode(null);
+    setSelectedEdge(null);
     controller.deleteNode(nodeId);
+  };
+
+  const handleEdgeDelete = (edgeId: string) => {
+    const controller = controllerRef.current;
+    if (!controller) {
+      return;
+    }
+    setSelectedEdge(null);
+    controller.deleteEdge(edgeId);
   };
 
   const handleExport = () => controllerRef.current?.exportGraph() ?? (demoGraph as GraphData);
@@ -76,7 +98,13 @@ export const App = () => {
         />
         <div className="canvas" ref={containerRef} />
       </div>
-      <InspectorPanel node={selectedNode} onChange={handleNodeChange} onDelete={handleNodeDelete} />
+      <InspectorPanel
+        node={selectedNode}
+        edge={selectedEdge}
+        onChange={handleNodeChange}
+        onDeleteNode={handleNodeDelete}
+        onDeleteEdge={handleEdgeDelete}
+      />
     </div>
   );
 };
