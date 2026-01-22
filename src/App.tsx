@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { EconEdgeData, EconNodeData, GraphData } from './models/types';
+import type { CustomNodeConfig, EconEdgeData, EconNodeData, GraphData } from './models/types';
 import { createCytoscape } from './graph/createCytoscape';
 import { InspectorPanel } from './ui/InspectorPanel';
 import { Toolbar } from './ui/Toolbar';
@@ -13,6 +13,46 @@ type GraphController = ReturnType<typeof createCytoscape>;
 type CustomViewState = {
   parentGraph: GraphData;
   customNodeId: string;
+};
+
+const ensureCustomInputs = (custom: CustomNodeConfig) => {
+  const internalGraph = {
+    nodes: custom.internalGraph.nodes.map((node) => ({ ...node })),
+    edges: custom.internalGraph.edges.map((edge) => ({ ...edge })),
+  };
+  const inputBindings = { ...custom.inputBindings };
+  const nodeIds = new Set(internalGraph.nodes.map((node) => node.id));
+  let changed = false;
+
+  custom.inputs.forEach((port, index) => {
+    let boundId = inputBindings[port.id];
+    if (!boundId) {
+      boundId = `input-${port.id}`;
+      inputBindings[port.id] = boundId;
+      changed = true;
+    }
+    if (!nodeIds.has(boundId)) {
+      internalGraph.nodes.push({
+        id: boundId,
+        label: port.label || `Input ${index + 1}`,
+        kind: 'income',
+        baseValue: 0,
+        timeUnit: 'per_month',
+      });
+      nodeIds.add(boundId);
+      changed = true;
+    }
+  });
+
+  if (!changed) {
+    return custom;
+  }
+
+  return {
+    ...custom,
+    internalGraph,
+    inputBindings,
+  };
 };
 
 export const App = () => {
@@ -35,11 +75,21 @@ export const App = () => {
     if (!controller) {
       return;
     }
+    const ensuredCustom = ensureCustomInputs(node.custom);
     const parentGraph = controller.exportGraph();
-    const viewState = { parentGraph, customNodeId: node.id };
+    const updatedParent: GraphData =
+      ensuredCustom === node.custom
+        ? parentGraph
+        : {
+            ...parentGraph,
+            nodes: parentGraph.nodes.map((item) =>
+              item.id === node.id ? { ...item, custom: ensuredCustom } : item,
+            ),
+          };
+    const viewState = { parentGraph: updatedParent, customNodeId: node.id };
     customViewRef.current = viewState;
     setCustomView(viewState);
-    controller.importGraph(node.custom.internalGraph);
+    controller.importGraph(ensuredCustom.internalGraph);
     setSelectedNode(null);
     setSelectedEdge(null);
   };

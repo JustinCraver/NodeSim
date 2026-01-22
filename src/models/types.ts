@@ -18,6 +18,7 @@ export interface EconNodeData {
   id: string;
   label: string;
   kind: NodeKind;
+  position?: { x: number; y: number };
   baseValue?: number;
   timeUnit?: TimeUnit;
   formula?: string;

@@ -70,7 +70,7 @@ const formatNodeLabel = (node: EconNodeData, error?: string) => {
 const graphDataFromCy = (cy: Core): GraphData => ({
   nodes: cy.nodes().map((node) => {
     const { displayLabel, ...data } = node.data() as EconNodeData & { displayLabel?: string };
-    return { ...data };
+    return { ...data, position: node.position() };
   }),
   edges: cy.edges().map((edge) => {
     const data = edge.data() as EconEdgeData;
@@ -102,10 +102,12 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     event.preventDefault();
   });
 
+  const hasInitialPositions = graphData.nodes.length > 0 && graphData.nodes.every((node) => Boolean(node.position));
+
   const cy = cytoscape({
     container,
     elements: {
-      nodes: graphData.nodes.map((node) => ({ data: node })),
+      nodes: graphData.nodes.map((node) => ({ data: node, position: node.position })),
       edges: graphData.edges.map((edge) => ({ data: edge })),
     },
     style: [
@@ -197,11 +199,13 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
         },
       },
     ],
-    layout: {
-      name: 'breadthfirst',
-      directed: true,
-      spacingFactor: 1.4,
-    },
+    layout: hasInitialPositions
+      ? { name: 'preset' }
+      : {
+          name: 'breadthfirst',
+          directed: true,
+          spacingFactor: 1.4,
+        },
   });
 
   recompute(cy);
@@ -429,10 +433,18 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
 
   const importGraph = (data: GraphData) => {
     cy.elements().remove();
-    cy.add(data.nodes.map((node) => ({ data: node })));
+    cy.add(data.nodes.map((node) => ({ data: node, position: node.position })));
     cy.add(data.edges.map((edge) => ({ data: edge })));
     recompute(cy);
-    cy.layout({ name: 'breadthfirst', directed: true, spacingFactor: 1.4 }).run();
+    const hasPositions = data.nodes.length > 0 && data.nodes.every((node) => Boolean(node.position));
+    if (hasPositions) {
+      cy.layout({ name: 'preset' }).run();
+    } else {
+      cy.layout({ name: 'breadthfirst', directed: true, spacingFactor: 1.4 }).run();
+    }
+    if (data.nodes.length > 0) {
+      cy.fit(undefined, 40);
+    }
   };
 
   const deleteNode = (nodeId: string) => {
