@@ -78,6 +78,29 @@ const graphDataFromCy = (cy: Core): GraphData => ({
   }),
 });
 
+const hasValidPosition = (position?: { x: number; y: number }) =>
+  Boolean(position && Number.isFinite(position.x) && Number.isFinite(position.y));
+
+const hasMeaningfulPositions = (nodes: EconNodeData[]) => {
+  if (nodes.length === 0) {
+    return false;
+  }
+  if (!nodes.every((node) => hasValidPosition(node.position))) {
+    return false;
+  }
+  if (nodes.length === 1) {
+    return true;
+  }
+  const first = nodes[0].position!;
+  return nodes.some((node) => {
+    const position = node.position!;
+    return Math.abs(position.x - first.x) > 0.01 || Math.abs(position.y - first.y) > 0.01;
+  });
+};
+
+const toCyNodeElement = (node: EconNodeData) =>
+  hasValidPosition(node.position) ? { data: node, position: node.position } : { data: node };
+
 const applyComputeResults = (cy: Core, result: GraphComputeResult) => {
   result.nodes.forEach((node) => {
     const element = cy.getElementById(node.id);
@@ -102,12 +125,12 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     event.preventDefault();
   });
 
-  const hasInitialPositions = graphData.nodes.length > 0 && graphData.nodes.every((node) => Boolean(node.position));
+  const hasInitialPositions = hasMeaningfulPositions(graphData.nodes);
 
   const cy = cytoscape({
     container,
     elements: {
-      nodes: graphData.nodes.map((node) => ({ data: node, position: node.position })),
+      nodes: graphData.nodes.map((node) => toCyNodeElement(node)),
       edges: graphData.edges.map((edge) => ({ data: edge })),
     },
     style: [
@@ -433,10 +456,10 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
 
   const importGraph = (data: GraphData) => {
     cy.elements().remove();
-    cy.add(data.nodes.map((node) => ({ data: node, position: node.position })));
+    cy.add(data.nodes.map((node) => toCyNodeElement(node)));
     cy.add(data.edges.map((edge) => ({ data: edge })));
     recompute(cy);
-    const hasPositions = data.nodes.length > 0 && data.nodes.every((node) => Boolean(node.position));
+    const hasPositions = hasMeaningfulPositions(data.nodes);
     if (hasPositions) {
       cy.layout({ name: 'preset' }).run();
     } else {
