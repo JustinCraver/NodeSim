@@ -1,0 +1,75 @@
+{
+  "nodes": [
+    {
+      "id": "netIncome",
+      "label": "Net Income",
+      "kind": "income",
+      "baseValue": 4000,
+      "timeUnit": "per_month"
+    },
+    {
+      "id": "fixedExpenses",
+      "label": "Fixed Expenses",
+      "kind": "expense",
+      "baseValue": 2500,
+      "timeUnit": "per_month"
+    },
+    {
+      "id": "coffee",
+      "label": "Coffee ($5/day)",
+      "kind": "expense",
+      "baseValue": 5,
+      "timeUnit": "per_day"
+    },
+    {
+      "id": "monthlySavings",
+      "label": "Monthly Savings",
+      "kind": "calc",
+      "formula": "netIncome - fixedExpenses - coffee"
+    },
+    {
+      "id": "houseFund",
+      "label": "House Fund",
+      "kind": "asset",
+      "interestRateAnnual": 0.03
+    },
+    {
+      "id": "monthsToDownPayment",
+      "label": "Months to $60k",
+      "kind": "output",
+      "targetAmount": 60000
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-income-savings",
+      "source": "netIncome",
+      "target": "monthlySavings",
+      "kind": "flow"
+    },
+    {
+      "id": "edge-fixed-savings",
+      "source": "fixedExpenses",
+      "target": "monthlySavings",
+      "kind": "flow"
+    },
+    {
+      "id": "edge-coffee-savings",
+      "source": "coffee",
+      "target": "monthlySavings",
+      "kind": "flow"
+    },
+    {
+      "id": "edge-savings-asset",
+      "source": "monthlySavings",
+      "target": "houseFund",
+      "kind": "flow"
+    },
+    {
+      "id": "edge-asset-output",
+      "source": "houseFund",
+      "target": "monthsToDownPayment",
+      "kind": "flow"
+    }
+  ]
+}
