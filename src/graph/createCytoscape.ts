@@ -258,11 +258,30 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     cy.layout({ name: 'breadthfirst', directed: true, spacingFactor: 1.4 }).run();
   };
 
+  const deleteNode = (nodeId: string) => {
+    const node = cy.getElementById(nodeId);
+    if (!node) {
+      return;
+    }
+    // Unselect the specific node if it's selected
+    if (node.selected()) {
+      node.unselect();
+    }
+    // Remove all edges connected to this node
+    const connectedEdges = cy.edges(`[source = "${nodeId}"], [target = "${nodeId}"]`);
+    connectedEdges.remove();
+    // Remove the node itself
+    node.remove();
+    // Recompute after a brief delay to ensure DOM updates are complete
+    setTimeout(() => recompute(cy), 0);
+  };
+
   const exportGraph = (): GraphData => graphDataFromCy(cy);
 
   return {
     cy,
     updateNodeData,
+    deleteNode,
     importGraph,
     exportGraph,
   };

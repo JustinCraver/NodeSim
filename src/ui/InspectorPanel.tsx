@@ -11,9 +11,10 @@ const TIME_UNIT_OPTIONS: { value: TimeUnit; label: string }[] = [
 type InspectorPanelProps = {
   node: EconNodeData | null;
   onChange: (nodeId: string, data: Partial<EconNodeData>) => void;
+  onDelete: (nodeId: string) => void;
 };
 
-export const InspectorPanel = ({ node, onChange }: InspectorPanelProps) => {
+export const InspectorPanel = ({ node, onChange, onDelete }: InspectorPanelProps) => {
   if (!node) {
     return (
       <div className="panel">
@@ -91,6 +92,24 @@ export const InspectorPanel = ({ node, onChange }: InspectorPanelProps) => {
       <div className="panel-section">
         <div className="label">Computed</div>
         <div>{node.computedValue ?? '--'}</div>
+      </div>
+      <div className="panel-section">
+        <button
+          className="delete-button"
+          onClick={() => onDelete(node.id)}
+          style={{
+            backgroundColor: '#dc2626',
+            color: 'white',
+            border: 'none',
+            padding: '8px 16px',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            width: '100%',
+            marginTop: '16px',
+          }}
+        >
+          Delete Node
+        </button>
       </div>
     </div>
   );

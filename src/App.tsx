@@ -38,6 +38,16 @@ export const App = () => {
     }
   };
 
+  const handleNodeDelete = (nodeId: string) => {
+    const controller = controllerRef.current;
+    if (!controller) {
+      return;
+    }
+    // Clear selection first to prevent any race conditions
+    setSelectedNode(null);
+    controller.deleteNode(nodeId);
+  };
+
   const handleExport = () => controllerRef.current?.exportGraph() ?? (demoGraph as GraphData);
 
   const handleImport = (data: GraphData) => {
@@ -66,7 +76,7 @@ export const App = () => {
         />
         <div className="canvas" ref={containerRef} />
       </div>
-      <InspectorPanel node={selectedNode} onChange={handleNodeChange} />
+      <InspectorPanel node={selectedNode} onChange={handleNodeChange} onDelete={handleNodeDelete} />
     </div>
   );
 };
