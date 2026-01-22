@@ -25,6 +25,24 @@ const ECON_NODE_OPTIONS: { kind: NodeKind; label: string }[] = [
   { kind: 'custom', label: 'Custom' },
 ];
 
+const BASE_NODE_WIDTH = 270;
+const BASE_NODE_HEIGHT = 135;
+const BASE_NODE_FONT_SIZE = 23;
+const BASE_TEXT_MAX_WIDTH = 270;
+const BASE_PORT_OVERLAY_WIDTH = 270;
+const BASE_PORT_OVERLAY_HEIGHT = 135;
+const BASE_PORT_CIRCLE_RADIUS = 9;
+const BASE_PORT_CIRCLE_STROKE = 3;
+const BASE_PORT_TEXT_SIZE = 23;
+const BASE_PORT_TEXT_Y = 45;
+const BASE_PORT_CIRCLE_Y = 14;
+const BASE_PORT_LEFT_X = 68;
+const BASE_PORT_RIGHT_X = 203;
+const BASE_PORT_GLOW_STD = 3;
+const BASE_PORT_TARGET_OFFSET = 68;
+
+const scaleValue = (value: number, scale: number) => Math.round(value * scale);
+
 const formatCurrency = (value: number) => {
   if (Number.isNaN(value)) {
     return '--';
@@ -69,23 +87,33 @@ const formatMathInputs = (node: EconNodeData) => {
   };
 };
 
-const buildPortOverlay = (node: EconNodeData) => {
+const buildPortOverlay = (node: EconNodeData, scale: number) => {
   const { left, right } = formatMathInputs(node);
+  const width = scaleValue(BASE_PORT_OVERLAY_WIDTH, scale);
+  const height = scaleValue(BASE_PORT_OVERLAY_HEIGHT, scale);
+  const leftX = scaleValue(BASE_PORT_LEFT_X, scale);
+  const rightX = scaleValue(BASE_PORT_RIGHT_X, scale);
+  const circleY = scaleValue(BASE_PORT_CIRCLE_Y, scale);
+  const circleRadius = scaleValue(BASE_PORT_CIRCLE_RADIUS, scale);
+  const circleStroke = scaleValue(BASE_PORT_CIRCLE_STROKE, scale);
+  const textY = scaleValue(BASE_PORT_TEXT_Y, scale);
+  const textSize = scaleValue(BASE_PORT_TEXT_SIZE, scale);
+  const glowStd = Math.max(1, scaleValue(BASE_PORT_GLOW_STD, scale));
   const leftFill = node.input1Connected ? '#0ea5e9' : 'none';
   const rightFill = node.input2Connected ? '#0ea5e9' : 'none';
   const leftGlow = node.input1Connected ? 'url(#portGlow)' : 'none';
   const rightGlow = node.input2Connected ? 'url(#portGlow)' : 'none';
   const svg = [
-    '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60" viewBox="0 0 120 60">',
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
     '<defs>',
     '<filter id="portGlow" x="-50%" y="-50%" width="200%" height="200%">',
-    '<feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#38bdf8" flood-opacity="0.9" />',
+    `<feDropShadow dx="0" dy="0" stdDeviation="${glowStd}" flood-color="#38bdf8" flood-opacity="0.9" />`,
     '</filter>',
     '</defs>',
-    `<circle cx="30" cy="6" r="4" fill="${leftFill}" stroke="#0f172a" stroke-width="1.5" filter="${leftGlow}" />`,
-    `<circle cx="90" cy="6" r="4" fill="${rightFill}" stroke="#0f172a" stroke-width="1.5" filter="${rightGlow}" />`,
-    `<text x="30" y="20" text-anchor="middle" font-size="10" fill="#0f172a">${left}</text>`,
-    `<text x="90" y="20" text-anchor="middle" font-size="10" fill="#0f172a">${right}</text>`,
+    `<circle cx="${leftX}" cy="${circleY}" r="${circleRadius}" fill="${leftFill}" stroke="#0f172a" stroke-width="${circleStroke}" filter="${leftGlow}" />`,
+    `<circle cx="${rightX}" cy="${circleY}" r="${circleRadius}" fill="${rightFill}" stroke="#0f172a" stroke-width="${circleStroke}" filter="${rightGlow}" />`,
+    `<text x="${leftX}" y="${textY}" text-anchor="middle" font-size="${textSize}" fill="#0f172a">${left}</text>`,
+    `<text x="${rightX}" y="${textY}" text-anchor="middle" font-size="${textSize}" fill="#0f172a">${right}</text>`,
     '</svg>',
   ].join('');
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
@@ -124,7 +152,7 @@ const formatNodeLabel = (node: EconNodeData, error?: string) => {
   return base;
 };
 
-const graphDataFromCy = (cy: Core): GraphData => ({
+const graphDataFromCy = (cy: Core, nodeScale: number): GraphData => ({
   nodes: cy.nodes().map((node) => {
     const { displayLabel, portOverlay, ...data } = node.data() as EconNodeData & {
       displayLabel?: string;
@@ -136,6 +164,7 @@ const graphDataFromCy = (cy: Core): GraphData => ({
     const data = edge.data() as EconEdgeData;
     return { ...data };
   }),
+  nodeScale,
 });
 
 const hasValidPosition = (position?: { x: number; y: number }) =>
@@ -161,12 +190,12 @@ const hasMeaningfulPositions = (nodes: EconNodeData[]) => {
 const toCyNodeElement = (node: EconNodeData) =>
   hasValidPosition(node.position) ? { data: node, position: node.position } : { data: node };
 
-const applyComputeResults = (cy: Core, result: GraphComputeResult) => {
+const applyComputeResults = (cy: Core, result: GraphComputeResult, scale: number) => {
   result.nodes.forEach((node) => {
     const element = cy.getElementById(node.id);
     if (element) {
       const error = result.errors[node.id];
-      const portOverlay = isMathKind(node.kind) ? buildPortOverlay(node) : undefined;
+      const portOverlay = isMathKind(node.kind) ? buildPortOverlay(node, scale) : undefined;
       element.data({
         ...node,
         displayLabel: formatNodeLabel(node, error),
@@ -176,10 +205,10 @@ const applyComputeResults = (cy: Core, result: GraphComputeResult) => {
   });
 };
 
-const recompute = (cy: Core) => {
-  const graphData = graphDataFromCy(cy);
+const recompute = (cy: Core, scale: number) => {
+  const graphData = graphDataFromCy(cy, scale);
   const result = computeGraph(graphData.nodes, graphData.edges);
-  applyComputeResults(cy, result);
+  applyComputeResults(cy, result, scale);
 };
 
 export const createCytoscape = (container: HTMLDivElement, graphData: GraphData, callbacks: GraphCallbacks = {}) => {
@@ -205,12 +234,12 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
           'text-valign': 'center',
           'text-halign': 'center',
           'text-wrap': 'wrap',
-          'text-max-width': '120px',
-          'font-size': '10px',
+          'text-max-width': `${BASE_TEXT_MAX_WIDTH}px`,
+          'font-size': BASE_NODE_FONT_SIZE,
           'border-width': 2,
           'border-color': '#1e3a8a',
-          width: 120,
-          height: 60,
+          width: BASE_NODE_WIDTH,
+          height: BASE_NODE_HEIGHT,
           'shape': 'roundrectangle',
         },
       },
@@ -255,8 +284,8 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
         style: {
           'background-image': 'data(portOverlay)',
           'background-fit': 'none',
-          'background-width': 120,
-          'background-height': 60,
+          'background-width': BASE_NODE_WIDTH,
+          'background-height': BASE_NODE_HEIGHT,
           'background-position-x': 0,
           'background-position-y': 0,
         },
@@ -264,13 +293,13 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       {
         selector: 'edge[targetPort = "1"], edge[targetPort = "left"]',
         style: {
-          'target-endpoint': '-30 -30',
+          'target-endpoint': `-${BASE_PORT_TARGET_OFFSET} -${BASE_PORT_TARGET_OFFSET}`,
         },
       },
       {
         selector: 'edge[targetPort = "2"], edge[targetPort = "right"]',
         style: {
-          'target-endpoint': '30 -30',
+          'target-endpoint': `${BASE_PORT_TARGET_OFFSET} -${BASE_PORT_TARGET_OFFSET}`,
         },
       },
       {
@@ -360,7 +389,45 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
         },
   });
 
-  recompute(cy);
+  let nodeScale = 1;
+
+  const applyNodeScale = (scale: number) => {
+    const width = scaleValue(BASE_NODE_WIDTH, scale);
+    const height = scaleValue(BASE_NODE_HEIGHT, scale);
+    const fontSize = scaleValue(BASE_NODE_FONT_SIZE, scale);
+    const textMaxWidth = scaleValue(BASE_TEXT_MAX_WIDTH, scale);
+    const offset = scaleValue(BASE_PORT_TARGET_OFFSET, scale);
+    cy.style()
+      .selector('node')
+      .style({
+        width,
+        height,
+        'font-size': fontSize,
+        'text-max-width': `${textMaxWidth}px`,
+      })
+      .selector('node[kind = "add"], node[kind = "subtract"], node[kind = "multiply"], node[kind = "divide"]')
+      .style({
+        'background-width': width,
+        'background-height': height,
+      })
+      .selector('edge[targetPort = "1"], edge[targetPort = "left"]')
+      .style({
+        'target-endpoint': `-${offset} -${offset}`,
+      })
+      .selector('edge[targetPort = "2"], edge[targetPort = "right"]')
+      .style({
+        'target-endpoint': `${offset} -${offset}`,
+      })
+      .update();
+  };
+
+  const setNodeScale = (scale: number) => {
+    nodeScale = Math.max(0.1, scale);
+    applyNodeScale(nodeScale);
+    recompute(cy, nodeScale);
+  };
+
+  recompute(cy, nodeScale);
 
   cy.on('select', 'node', (event) => {
     cy.edges(':selected').unselect();
@@ -475,7 +542,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       data: node,
       position,
     });
-    recompute(cy);
+    recompute(cy, nodeScale);
     cy.getElementById(id)?.select();
   };
 
@@ -547,7 +614,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
             kind: 'flow',
           },
         });
-        recompute(cy);
+        recompute(cy, nodeScale);
         hideEdgePortMenu();
       });
       menu.appendChild(button);
@@ -666,11 +733,11 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
         kind: 'flow',
       },
     });
-    recompute(cy);
+    recompute(cy, nodeScale);
   });
 
   cy.on('remove add', 'edge', () => {
-    recompute(cy);
+    recompute(cy, nodeScale);
   });
 
   const handleGlobalPointerDown = (event: PointerEvent) => {
@@ -704,7 +771,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       ...current,
       ...data,
     });
-    recompute(cy);
+    recompute(cy, nodeScale);
   };
 
   const updateEdgeData = (edgeId: string, data: Partial<EconEdgeData>) => {
@@ -717,14 +784,17 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       ...current,
       ...data,
     });
-    recompute(cy);
+    recompute(cy, nodeScale);
   };
 
   const importGraph = (data: GraphData) => {
+    if (data.nodeScale !== undefined) {
+      setNodeScale(data.nodeScale);
+    }
     cy.elements().remove();
     cy.add(data.nodes.map((node) => toCyNodeElement(node)));
     cy.add(data.edges.map((edge) => ({ data: edge })));
-    recompute(cy);
+    recompute(cy, nodeScale);
     const hasPositions = hasMeaningfulPositions(data.nodes);
     if (hasPositions) {
       cy.layout({ name: 'preset' }).run();
@@ -751,7 +821,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     // Remove the node itself
     node.remove();
     // Recompute after a brief delay to ensure DOM updates are complete
-    setTimeout(() => recompute(cy), 0);
+    setTimeout(() => recompute(cy, nodeScale), 0);
   };
 
   const deleteEdge = (edgeId: string) => {
@@ -763,10 +833,10 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       edge.unselect();
     }
     edge.remove();
-    setTimeout(() => recompute(cy), 0);
+    setTimeout(() => recompute(cy, nodeScale), 0);
   };
 
-  const exportGraph = (): GraphData => graphDataFromCy(cy);
+  const exportGraph = (): GraphData => graphDataFromCy(cy, nodeScale);
 
   return {
     cy,
@@ -776,5 +846,6 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     deleteEdge,
     importGraph,
     exportGraph,
+    setNodeScale,
   };
 };

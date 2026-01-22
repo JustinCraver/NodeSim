@@ -7,11 +7,22 @@ type ToolbarProps = {
   onImport: (data: GraphData) => void;
   disableCoffee: boolean;
   onToggleCoffee: (value: boolean) => void;
+  nodeScale: number;
+  onNodeScaleChange: (value: number) => void;
   isCustomView?: boolean;
   onExitCustomView?: () => void;
 };
 
-export const Toolbar = ({ onExport, onImport, disableCoffee, onToggleCoffee, isCustomView, onExitCustomView }: ToolbarProps) => {
+export const Toolbar = ({
+  onExport,
+  onImport,
+  disableCoffee,
+  onToggleCoffee,
+  nodeScale,
+  onNodeScaleChange,
+  isCustomView,
+  onExitCustomView,
+}: ToolbarProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExport = () => {
@@ -63,6 +74,18 @@ export const Toolbar = ({ onExport, onImport, disableCoffee, onToggleCoffee, isC
       <label className="toolbar-checkbox">
         <input type="checkbox" checked={disableCoffee} onChange={(event) => onToggleCoffee(event.target.checked)} />
         Disable coffee
+      </label>
+      <label className="toolbar-scale">
+        <span>Node scale</span>
+        <input
+          type="range"
+          min="0.5"
+          max="2"
+          step="0.05"
+          value={nodeScale}
+          onChange={(event) => onNodeScaleChange(Number(event.target.value))}
+        />
+        <span>{Math.round(nodeScale * 100)}%</span>
       </label>
       <input ref={fileInputRef} type="file" accept="application/json" onChange={handleFileChange} hidden />
     </div>

@@ -61,6 +61,7 @@ export interface EconEdgeData {
 export interface GraphData {
   nodes: EconNodeData[];
   edges: EconEdgeData[];
+  nodeScale?: number;
 }
 
 export interface GraphComputeResult {

@@ -132,11 +132,11 @@ export const InspectorPanel = ({
               backgroundColor: '#dc2626',
               color: 'white',
               border: 'none',
-              padding: '8px 16px',
-              borderRadius: '4px',
+              padding: '12px 24px',
+              borderRadius: '6px',
               cursor: 'pointer',
               width: '100%',
-              marginTop: '16px',
+              marginTop: '24px',
             }}
           >
             Delete Connection
@@ -270,10 +270,10 @@ export const InspectorPanel = ({
   return (
     <div className="panel">
       <h2>Inspector</h2>
-      <div className="panel-section">
-        <div className="label">Label</div>
-        <div>{activeNode.label}</div>
-      </div>
+      <label className="panel-section">
+        <span className="label">Label</span>
+        <input type="text" value={activeNode.label} onChange={handleTextChange('label')} />
+      </label>
       <div className="panel-section">
         <div className="label">Type</div>
         <div>{activeNode.kind}</div>
@@ -347,20 +347,20 @@ export const InspectorPanel = ({
             {customConfig.inputs.map((port) => (
               <div
                 key={port.id}
-                style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}
+                style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '12px' }}
               >
                 <input
                   type="text"
                   value={port.label}
                   onChange={(event) => updatePortLabel('input', port.id, event.target.value)}
                 />
-                <span style={{ fontSize: '11px', color: '#64748b' }}>{port.id}</span>
+                <span style={{ fontSize: '16px', color: '#64748b' }}>{port.id}</span>
                 <button type="button" onClick={() => removePort('input', port.id)}>
                   Remove
                 </button>
               </div>
             ))}
-            <button type="button" style={{ marginTop: '8px' }} onClick={() => addPort('input')}>
+            <button type="button" style={{ marginTop: '12px' }} onClick={() => addPort('input')}>
               Add Input
             </button>
           </div>
@@ -369,27 +369,27 @@ export const InspectorPanel = ({
             {customConfig.outputs.map((port) => (
               <div
                 key={port.id}
-                style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}
+                style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '12px' }}
               >
                 <input
                   type="text"
                   value={port.label}
                   onChange={(event) => updatePortLabel('output', port.id, event.target.value)}
                 />
-                <span style={{ fontSize: '11px', color: '#64748b' }}>{port.id}</span>
+                <span style={{ fontSize: '16px', color: '#64748b' }}>{port.id}</span>
                 <button type="button" onClick={() => removePort('output', port.id)}>
                   Remove
                 </button>
               </div>
             ))}
-            <button type="button" style={{ marginTop: '8px' }} onClick={() => addPort('output')}>
+            <button type="button" style={{ marginTop: '12px' }} onClick={() => addPort('output')}>
               Add Output
             </button>
           </div>
           <div className="panel-section">
             <div className="label">Input Bindings</div>
             {customConfig.inputs.map((port) => (
-              <label key={port.id} className="panel-section" style={{ marginTop: '8px' }}>
+              <label key={port.id} className="panel-section" style={{ marginTop: '12px' }}>
                 <span className="label">
                   {port.label} ({port.id})
                 </span>
@@ -410,7 +410,7 @@ export const InspectorPanel = ({
           <div className="panel-section">
             <div className="label">Output Bindings</div>
             {customConfig.outputs.map((port) => (
-              <label key={port.id} className="panel-section" style={{ marginTop: '8px' }}>
+              <label key={port.id} className="panel-section" style={{ marginTop: '12px' }}>
                 <span className="label">
                   {port.label} ({port.id})
                 </span>
@@ -434,10 +434,10 @@ export const InspectorPanel = ({
               rows={8}
               value={internalGraphText}
               onChange={(event) => setInternalGraphText(event.target.value)}
-              style={{ width: '100%', marginTop: '8px' }}
+              style={{ width: '100%', marginTop: '12px' }}
             />
-            {internalGraphError && <div style={{ color: '#dc2626', marginTop: '8px' }}>{internalGraphError}</div>}
-            <button type="button" style={{ marginTop: '8px' }} onClick={handleApplyInternalGraph}>
+            {internalGraphError && <div style={{ color: '#dc2626', marginTop: '12px' }}>{internalGraphError}</div>}
+            <button type="button" style={{ marginTop: '12px' }} onClick={handleApplyInternalGraph}>
               Apply Internal Graph
             </button>
           </div>
@@ -455,11 +455,11 @@ export const InspectorPanel = ({
             backgroundColor: '#dc2626',
             color: 'white',
             border: 'none',
-            padding: '8px 16px',
-            borderRadius: '4px',
+            padding: '12px 24px',
+            borderRadius: '6px',
             cursor: 'pointer',
             width: '100%',
-            marginTop: '16px',
+            marginTop: '24px',
           }}
         >
           Delete Node

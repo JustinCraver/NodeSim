@@ -61,6 +61,7 @@ export const App = () => {
   const [selectedNode, setSelectedNode] = useState<EconNodeData | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<EconEdgeData | null>(null);
   const [disableCoffee, setDisableCoffee] = useState(false);
+  const [nodeScale, setNodeScale] = useState(1);
   const [customView, setCustomView] = useState<CustomViewState | null>(null);
   const customViewRef = useRef<CustomViewState | null>(null);
 
@@ -114,6 +115,14 @@ export const App = () => {
       onOpenCustomNode: handleOpenCustomNode,
     });
   }, []);
+
+  useEffect(() => {
+    const controller = controllerRef.current;
+    if (!controller) {
+      return;
+    }
+    controller.setNodeScale(nodeScale);
+  }, [nodeScale]);
 
   const handleNodeChange = (nodeId: string, data: Partial<EconNodeData>) => {
     const controller = controllerRef.current;
@@ -201,6 +210,9 @@ export const App = () => {
   const handleExport = () => controllerRef.current?.exportGraph() ?? (demoGraph as GraphData);
 
   const handleImport = (data: GraphData) => {
+    if (data.nodeScale !== undefined) {
+      setNodeScale(data.nodeScale);
+    }
     controllerRef.current?.importGraph(data);
   };
 
@@ -223,6 +235,8 @@ export const App = () => {
           onImport={handleImport}
           disableCoffee={disableCoffee}
           onToggleCoffee={handleToggleCoffee}
+          nodeScale={nodeScale}
+          onNodeScaleChange={setNodeScale}
           isCustomView={Boolean(customView)}
           onExitCustomView={customView ? handleExitCustomView : undefined}
         />
