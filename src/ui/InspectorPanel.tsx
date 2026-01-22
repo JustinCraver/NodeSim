@@ -1,12 +1,36 @@
 import { useEffect, useState } from 'react';
 import type React from 'react';
-import type { CustomNodeConfig, EconEdgeData, EconNodeData, PortDef, TimeUnit } from '../models/types';
+import type { CustomNodeConfig, EconEdgeData, EconNodeData, NodeKind, PortDef, TimeUnit } from '../models/types';
 
 const TIME_UNIT_OPTIONS: { value: TimeUnit; label: string }[] = [
   { value: 'per_day', label: 'Per Day' },
   { value: 'per_week', label: 'Per Week' },
   { value: 'per_month', label: 'Per Month' },
   { value: 'per_year', label: 'Per Year' },
+];
+
+const NODE_KIND_GROUPS: { label: string; options: { value: NodeKind; label: string }[] }[] = [
+  {
+    label: 'Basic Math',
+    options: [
+      { value: 'value', label: 'Value' },
+      { value: 'add', label: 'Add' },
+      { value: 'subtract', label: 'Subtract' },
+      { value: 'multiply', label: 'Multiply' },
+      { value: 'divide', label: 'Divide' },
+    ],
+  },
+  {
+    label: 'Economy',
+    options: [
+      { value: 'income', label: 'Income' },
+      { value: 'expense', label: 'Expense' },
+      { value: 'calc', label: 'Calc' },
+      { value: 'asset', label: 'Asset' },
+      { value: 'output', label: 'Output' },
+      { value: 'custom', label: 'Custom' },
+    ],
+  },
 ];
 
 const BINARY_PORT_OPTIONS: PortDef[] = [
@@ -169,6 +193,96 @@ export const InspectorPanel = ({
     onChange(activeNode.id, { custom: config });
   };
 
+  const createDefaultCustomConfig = (): CustomNodeConfig => {
+    const inputPortId = 'in-1';
+    const outputPortId = 'out-1';
+    const internalInputId = 'internal-input';
+    const internalOutputId = 'internal-output';
+
+    return {
+      inputs: [{ id: inputPortId, label: 'Input' }],
+      outputs: [{ id: outputPortId, label: 'Output' }],
+      internalGraph: {
+        nodes: [
+          {
+            id: internalInputId,
+            label: 'Input',
+            kind: 'value',
+            baseValue: 0,
+          },
+          {
+            id: internalOutputId,
+            label: 'Output',
+            kind: 'value',
+            baseValue: 0,
+          },
+        ],
+        edges: [],
+      },
+      inputBindings: {
+        [inputPortId]: internalInputId,
+      },
+      outputBindings: {
+        [outputPortId]: internalOutputId,
+      },
+    };
+  };
+
+  const buildKindUpdate = (kind: NodeKind): Partial<EconNodeData> => {
+    const reset: Partial<EconNodeData> = {
+      kind,
+      baseValue: undefined,
+      timeUnit: undefined,
+      leftValue: undefined,
+      rightValue: undefined,
+      formula: undefined,
+      interestRateAnnual: undefined,
+      targetAmount: undefined,
+      custom: undefined,
+      input1Value: undefined,
+      input2Value: undefined,
+      input1Connected: undefined,
+      input2Connected: undefined,
+      timeseries: undefined,
+    };
+
+    switch (kind) {
+      case 'income':
+      case 'expense':
+        return { ...reset, baseValue: 0, timeUnit: 'per_month' };
+      case 'value':
+        return { ...reset, baseValue: 0 };
+      case 'add':
+      case 'subtract':
+        return { ...reset, leftValue: 0, rightValue: 0 };
+      case 'multiply':
+      case 'divide':
+        return { ...reset, leftValue: 1, rightValue: 1 };
+      case 'calc':
+        return { ...reset, formula: '' };
+      case 'asset':
+        return { ...reset, interestRateAnnual: 0 };
+      case 'output':
+        return { ...reset, targetAmount: 0 };
+      case 'custom':
+        return { ...reset, custom: createDefaultCustomConfig() };
+      default:
+        return reset;
+    }
+  };
+
+  const handleKindChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextKind = event.target.value as NodeKind;
+    if (nextKind === activeNode.kind) {
+      return;
+    }
+    const update = buildKindUpdate(nextKind);
+    if (nextKind === 'custom' && activeNode.custom) {
+      update.custom = activeNode.custom;
+    }
+    onChange(activeNode.id, update);
+  };
+
   const createPortId = (prefix: string) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
   const addPort = (type: 'input' | 'output') => {
@@ -274,10 +388,20 @@ export const InspectorPanel = ({
         <span className="label">Label</span>
         <input type="text" value={activeNode.label} onChange={handleTextChange('label')} />
       </label>
-      <div className="panel-section">
-        <div className="label">Type</div>
-        <div>{activeNode.kind}</div>
-      </div>
+      <label className="panel-section">
+        <span className="label">Type</span>
+        <select value={activeNode.kind} onChange={handleKindChange}>
+          {NODE_KIND_GROUPS.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.options.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </label>
       {(activeNode.kind === 'income' || activeNode.kind === 'expense') && (
         <>
           <label className="panel-section">

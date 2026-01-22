@@ -583,13 +583,15 @@ export const computeGraph = (nodes: EconNodeData[], edges: EconEdgeData[]): Grap
               bindingErrors.push(`Invalid input binding for ${port.id}`);
               return;
             }
-            if (targetNode.kind !== 'income') {
-              bindingErrors.push(`Input binding ${port.id} must target income`);
+            if (targetNode.kind !== 'income' && targetNode.kind !== 'value') {
+              bindingErrors.push(`Input binding ${port.id} must target income or value`);
               return;
             }
             const value = inputTotals.get(port.id) ?? 0;
             targetNode.baseValue = value;
-            targetNode.timeUnit = 'per_month';
+            if (targetNode.kind === 'income') {
+              targetNode.timeUnit = 'per_month';
+            }
           });
 
           const internalResult = computeGraph(internalNodes, internalEdges);

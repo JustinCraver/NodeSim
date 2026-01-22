@@ -500,7 +500,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       const inputPortId = 'in-1';
       const outputPortId = 'out-1';
       const internalInputId = 'internal-input';
-      const internalCalcId = 'internal-output';
+      const internalOutputId = 'internal-output';
       node.custom = {
         inputs: [{ id: inputPortId, label: 'Input' }],
         outputs: [{ id: outputPortId, label: 'Output' }],
@@ -509,31 +509,23 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
             {
               id: internalInputId,
               label: 'Input',
-              kind: 'income',
+              kind: 'value',
               baseValue: 0,
-              timeUnit: 'per_month',
             },
             {
-              id: internalCalcId,
+              id: internalOutputId,
               label: 'Output',
-              kind: 'calc',
-              formula: internalInputId,
+              kind: 'value',
+              baseValue: 0,
             },
           ],
-          edges: [
-            {
-              id: `edge-${internalInputId}-${internalCalcId}`,
-              source: internalInputId,
-              target: internalCalcId,
-              kind: 'flow',
-            },
-          ],
+          edges: [],
         },
         inputBindings: {
           [inputPortId]: internalInputId,
         },
         outputBindings: {
-          [outputPortId]: internalCalcId,
+          [outputPortId]: internalOutputId,
         },
       };
     }

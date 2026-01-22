@@ -35,9 +35,8 @@ const ensureCustomInputs = (custom: CustomNodeConfig) => {
       internalGraph.nodes.push({
         id: boundId,
         label: port.label || `Input ${index + 1}`,
-        kind: 'income',
+        kind: 'value',
         baseValue: 0,
-        timeUnit: 'per_month',
       });
       nodeIds.add(boundId);
       changed = true;
