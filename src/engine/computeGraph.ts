@@ -20,6 +20,9 @@ const TIME_UNIT_MULTIPLIERS: Record<TimeUnit, number> = {
   per_year: 1 / 12,
 };
 
+const sumValues = (values: number[]) => values.reduce((total, value) => total + value, 0);
+const multiplyValues = (values: number[]) => values.reduce((total, value) => total * value, 1);
+
 const OPERATORS: Record<string, { precedence: number; assoc: 'left' | 'right'; args: number }> = {
   '+': { precedence: 1, assoc: 'left', args: 2 },
   '-': { precedence: 1, assoc: 'left', args: 2 },
@@ -260,6 +263,45 @@ const evaluateFormula = (formula: string, variables: Record<string, number>) => 
   return evaluateRpn(rpn, variables);
 };
 
+const splitBinaryInputs = (incomingEdges: EconEdgeData[], incomingValues: number[]) => {
+  const leftValues: number[] = [];
+  const rightValues: number[] = [];
+  const unassigned: number[] = [];
+
+  incomingEdges.forEach((edge, index) => {
+    const value = incomingValues[index] ?? 0;
+    if (edge.targetPort === 'left') {
+      leftValues.push(value);
+      return;
+    }
+    if (edge.targetPort === 'right') {
+      rightValues.push(value);
+      return;
+    }
+    unassigned.push(value);
+  });
+
+  if (leftValues.length === 0 && rightValues.length === 0) {
+    if (unassigned.length > 0) {
+      leftValues.push(unassigned[0]);
+      rightValues.push(...unassigned.slice(1));
+    }
+  } else if (leftValues.length === 0) {
+    leftValues.push(...unassigned);
+  } else if (rightValues.length === 0) {
+    rightValues.push(...unassigned);
+  } else if (unassigned.length > 0) {
+    rightValues.push(...unassigned);
+  }
+
+  return {
+    left: sumValues(leftValues),
+    right: sumValues(rightValues),
+    leftCount: leftValues.length,
+    rightCount: rightValues.length,
+  };
+};
+
 const getDefaultPortId = (ports: { id: string }[] | undefined) => ports?.[0]?.id;
 
 const buildIncomingMap = (edges: EconEdgeData[]) => {
@@ -353,6 +395,40 @@ export const computeGraph = (nodes: EconNodeData[], edges: EconEdgeData[]): Grap
         case 'expense':
           node.computedValue = normalizeMonthlyValue(node.baseValue, node.timeUnit);
           break;
+        case 'value':
+          node.computedValue = node.baseValue ?? 0;
+          break;
+        case 'add':
+          if (incomingValues.length === 0) {
+            throw new Error('Missing inputs');
+          }
+          node.computedValue = sumValues(incomingValues);
+          break;
+        case 'subtract': {
+          const { left, right, leftCount, rightCount } = splitBinaryInputs(incomingEdges, incomingValues);
+          if (leftCount === 0 || rightCount === 0) {
+            throw new Error('Subtract requires two inputs');
+          }
+          node.computedValue = left - right;
+          break;
+        }
+        case 'multiply':
+          if (incomingValues.length === 0) {
+            throw new Error('Missing inputs');
+          }
+          node.computedValue = multiplyValues(incomingValues);
+          break;
+        case 'divide': {
+          const { left, right, leftCount, rightCount } = splitBinaryInputs(incomingEdges, incomingValues);
+          if (leftCount === 0 || rightCount === 0) {
+            throw new Error('Divide requires two inputs');
+          }
+          if (right === 0) {
+            throw new Error('Division by zero');
+          }
+          node.computedValue = left / right;
+          break;
+        }
         case 'calc': {
           if (!node.formula) {
             throw new Error('Missing formula');

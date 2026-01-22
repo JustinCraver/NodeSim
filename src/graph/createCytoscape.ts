@@ -11,6 +11,11 @@ type GraphCallbacks = {
 const NODE_KIND_OPTIONS: { kind: NodeKind; label: string }[] = [
   { kind: 'income', label: 'Income' },
   { kind: 'expense', label: 'Expense' },
+  { kind: 'value', label: 'Value' },
+  { kind: 'add', label: 'Add' },
+  { kind: 'subtract', label: 'Subtract' },
+  { kind: 'multiply', label: 'Multiply' },
+  { kind: 'divide', label: 'Divide' },
   { kind: 'calc', label: 'Calc' },
   { kind: 'asset', label: 'Asset' },
   { kind: 'output', label: 'Output' },
@@ -41,6 +46,14 @@ const formatOutputValue = (value?: number) => {
   return `${value}`;
 };
 
+const formatNumberLabel = (value?: number) => {
+  if (value === undefined || Number.isNaN(value)) {
+    return '--';
+  }
+  const rounded = Math.round(value * 100) / 100;
+  return `${rounded}`;
+};
+
 const formatNodeLabel = (node: EconNodeData, error?: string) => {
   let suffix = '';
   switch (node.kind) {
@@ -49,6 +62,13 @@ const formatNodeLabel = (node: EconNodeData, error?: string) => {
     case 'calc':
     case 'custom':
       suffix = formatMonthlyLabel(node.computedValue);
+      break;
+    case 'value':
+    case 'add':
+    case 'subtract':
+    case 'multiply':
+    case 'divide':
+      suffix = formatNumberLabel(node.computedValue);
       break;
     case 'asset':
       suffix = formatCurrency(node.computedValue ?? 0);
@@ -221,6 +241,41 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
           'border-color': '#7e22ce',
         },
       },
+      {
+        selector: 'node[kind = "value"]',
+        style: {
+          'background-color': '#64748b',
+          'border-color': '#475569',
+        },
+      },
+      {
+        selector: 'node[kind = "add"]',
+        style: {
+          'background-color': '#14b8a6',
+          'border-color': '#0f766e',
+        },
+      },
+      {
+        selector: 'node[kind = "subtract"]',
+        style: {
+          'background-color': '#ef4444',
+          'border-color': '#b91c1c',
+        },
+      },
+      {
+        selector: 'node[kind = "multiply"]',
+        style: {
+          'background-color': '#22d3ee',
+          'border-color': '#0891b2',
+        },
+      },
+      {
+        selector: 'node[kind = "divide"]',
+        style: {
+          'background-color': '#f59e0b',
+          'border-color': '#b45309',
+        },
+      },
     ],
     layout: hasInitialPositions
       ? { name: 'preset' }
@@ -281,9 +336,14 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       id,
       label,
       kind,
-      baseValue: 0,
-      timeUnit: 'per_month',
     };
+    if (kind === 'income' || kind === 'expense') {
+      node.baseValue = 0;
+      node.timeUnit = 'per_month';
+    }
+    if (kind === 'value') {
+      node.baseValue = 0;
+    }
     if (kind === 'custom') {
       const inputPortId = 'in-1';
       const outputPortId = 'out-1';

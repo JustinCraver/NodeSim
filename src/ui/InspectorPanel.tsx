@@ -9,6 +9,11 @@ const TIME_UNIT_OPTIONS: { value: TimeUnit; label: string }[] = [
   { value: 'per_year', label: 'Per Year' },
 ];
 
+const BINARY_PORT_OPTIONS: PortDef[] = [
+  { id: 'left', label: 'Left' },
+  { id: 'right', label: 'Right' },
+];
+
 type InspectorPanelProps = {
   node: EconNodeData | null;
   edge: EconEdgeData | null;
@@ -54,6 +59,10 @@ export const InspectorPanel = ({
     const targetNode = getNodeById(edge.target);
     const sourceOutputs = sourceNode?.kind === 'custom' ? sourceNode.custom?.outputs ?? [] : [];
     const targetInputs = targetNode?.kind === 'custom' ? targetNode.custom?.inputs ?? [] : [];
+    const targetMathPorts =
+      targetNode?.kind === 'subtract' || targetNode?.kind === 'divide' ? BINARY_PORT_OPTIONS : [];
+    const targetPortOptions = targetNode?.kind === 'custom' ? targetInputs : targetMathPorts;
+    const showTargetPorts = targetNode?.kind === 'custom' || targetMathPorts.length > 0;
 
     return (
       <div className="panel">
@@ -86,7 +95,7 @@ export const InspectorPanel = ({
             </select>
           </label>
         )}
-        {targetNode?.kind === 'custom' && (
+        {showTargetPorts && (
           <label className="panel-section">
             <span className="label">Target Port</span>
             <select
@@ -96,7 +105,7 @@ export const InspectorPanel = ({
               }
             >
               <option value="">Default</option>
-              {targetInputs.map((port) => (
+              {targetPortOptions.map((port) => (
                 <option key={port.id} value={port.id}>
                   {port.label} ({port.id})
                 </option>
@@ -275,6 +284,12 @@ export const InspectorPanel = ({
             </select>
           </label>
         </>
+      )}
+      {activeNode.kind === 'value' && (
+        <label className="panel-section">
+          <span className="label">Value</span>
+          <input type="number" value={activeNode.baseValue ?? ''} onChange={handleNumberChange('baseValue')} />
+        </label>
       )}
       {activeNode.kind === 'calc' && (
         <label className="panel-section">

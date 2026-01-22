@@ -1,4 +1,15 @@
-export type NodeKind = 'income' | 'expense' | 'calc' | 'asset' | 'output' | 'custom';
+export type NodeKind =
+  | 'income'
+  | 'expense'
+  | 'value'
+  | 'add'
+  | 'subtract'
+  | 'multiply'
+  | 'divide'
+  | 'calc'
+  | 'asset'
+  | 'output'
+  | 'custom';
 export type TimeUnit = 'per_day' | 'per_week' | 'per_month' | 'per_year';
 
 export type PortDef = {
