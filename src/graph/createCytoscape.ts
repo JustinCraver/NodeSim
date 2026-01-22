@@ -117,6 +117,22 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
         },
       },
       {
+        selector: 'node:selected',
+        style: {
+          'border-width': 4,
+          'border-color': '#0ea5e9',
+          'background-color': '#1d4ed8',
+          color: '#e2e8f0',
+        },
+      },
+      {
+        selector: 'node.hovered',
+        style: {
+          'border-width': 3,
+          'border-color': '#38bdf8',
+        },
+      },
+      {
         selector: 'edge',
         style: {
           width: 2,
@@ -180,6 +196,14 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
 
   cy.on('unselect', 'node', () => {
     callbacks.onSelectNode?.(null);
+  });
+
+  cy.on('mouseover', 'node', (event) => {
+    event.target.addClass('hovered');
+  });
+
+  cy.on('mouseout', 'node', (event) => {
+    event.target.removeClass('hovered');
   });
 
   cy.on('select', 'edge', (event) => {
