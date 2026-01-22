@@ -86,6 +86,10 @@ const recompute = (cy: Core) => {
 };
 
 export const createCytoscape = (container: HTMLDivElement, graphData: GraphData, callbacks: GraphCallbacks = {}) => {
+  container.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+  });
+
   const cy = cytoscape({
     container,
     elements: {
@@ -169,6 +173,27 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
   });
 
   let edgeSource: string | null = null;
+  let nodeSequence = 1;
+
+  const createNodeAt = (position: { x: number; y: number }) => {
+    const id = `node-${Date.now()}-${nodeSequence}`;
+    const label = `Node ${cy.nodes().length + 1}`;
+    nodeSequence += 1;
+    const node: EconNodeData = {
+      id,
+      label,
+      kind: 'income',
+      baseValue: 0,
+      timeUnit: 'per_month',
+    };
+    cy.add({
+      group: 'nodes',
+      data: node,
+      position,
+    });
+    recompute(cy);
+    cy.getElementById(id)?.select();
+  };
 
   cy.on('tap', 'node', (event) => {
     const node = event.target;
@@ -198,6 +223,14 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     if (event.target === cy) {
       edgeSource = null;
     }
+  });
+
+  cy.on('cxttap', (event) => {
+    if (event.target !== cy) {
+      return;
+    }
+    edgeSource = null;
+    createNodeAt(event.position);
   });
 
   cy.on('remove add', 'edge', () => {
