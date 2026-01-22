@@ -28,6 +28,56 @@
       "formula": "netIncome - fixedExpenses - coffee"
     },
     {
+      "id": "savingsAdjuster",
+      "label": "Savings Adjuster",
+      "kind": "custom",
+      "custom": {
+        "inputs": [
+          {
+            "id": "in-1",
+            "label": "Savings In"
+          }
+        ],
+        "outputs": [
+          {
+            "id": "out-1",
+            "label": "Adjusted Out"
+          }
+        ],
+        "internalGraph": {
+          "nodes": [
+            {
+              "id": "customInput",
+              "label": "Input",
+              "kind": "income",
+              "baseValue": 0,
+              "timeUnit": "per_month"
+            },
+            {
+              "id": "customOutput",
+              "label": "Adjusted",
+              "kind": "calc",
+              "formula": "customInput * 0.9"
+            }
+          ],
+          "edges": [
+            {
+              "id": "edge-customInput-customOutput",
+              "source": "customInput",
+              "target": "customOutput",
+              "kind": "flow"
+            }
+          ]
+        },
+        "inputBindings": {
+          "in-1": "customInput"
+        },
+        "outputBindings": {
+          "out-1": "customOutput"
+        }
+      }
+    },
+    {
       "id": "houseFund",
       "label": "House Fund",
       "kind": "asset",
@@ -60,8 +110,16 @@
       "kind": "flow"
     },
     {
-      "id": "edge-savings-asset",
+      "id": "edge-savings-adjuster",
       "source": "monthlySavings",
+      "target": "savingsAdjuster",
+      "targetPort": "in-1",
+      "kind": "flow"
+    },
+    {
+      "id": "edge-adjuster-asset",
+      "source": "savingsAdjuster",
+      "sourcePort": "out-1",
       "target": "houseFund",
       "kind": "flow"
     },

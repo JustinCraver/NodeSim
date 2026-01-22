@@ -5,6 +5,7 @@ import { computeGraph } from '../engine/computeGraph';
 type GraphCallbacks = {
   onSelectNode?: (node: EconNodeData | null) => void;
   onSelectEdge?: (edge: EconEdgeData | null) => void;
+  onOpenCustomNode?: (node: EconNodeData) => void;
 };
 
 const NODE_KIND_OPTIONS: { kind: NodeKind; label: string }[] = [
@@ -13,6 +14,7 @@ const NODE_KIND_OPTIONS: { kind: NodeKind; label: string }[] = [
   { kind: 'calc', label: 'Calc' },
   { kind: 'asset', label: 'Asset' },
   { kind: 'output', label: 'Output' },
+  { kind: 'custom', label: 'Custom' },
 ];
 
 const formatCurrency = (value: number) => {
@@ -45,6 +47,7 @@ const formatNodeLabel = (node: EconNodeData, error?: string) => {
     case 'income':
     case 'expense':
     case 'calc':
+    case 'custom':
       suffix = formatMonthlyLabel(node.computedValue);
       break;
     case 'asset':
@@ -186,6 +189,13 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
           'border-color': '#be185d',
         },
       },
+      {
+        selector: 'node[kind = "custom"]',
+        style: {
+          'background-color': '#a855f7',
+          'border-color': '#7e22ce',
+        },
+      },
     ],
     layout: {
       name: 'breadthfirst',
@@ -204,6 +214,14 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
 
   cy.on('unselect', 'node', () => {
     callbacks.onSelectNode?.(null);
+  });
+
+  cy.on('dbltap', 'node', (event) => {
+    const node = event.target.data() as EconNodeData;
+    if (node.kind !== 'custom' || !node.custom) {
+      return;
+    }
+    callbacks.onOpenCustomNode?.({ ...node });
   });
 
   cy.on('mouseover', 'node', (event) => {
@@ -239,6 +257,47 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       baseValue: 0,
       timeUnit: 'per_month',
     };
+    if (kind === 'custom') {
+      const inputPortId = 'in-1';
+      const outputPortId = 'out-1';
+      const internalInputId = 'internal-input';
+      const internalCalcId = 'internal-output';
+      node.custom = {
+        inputs: [{ id: inputPortId, label: 'Input' }],
+        outputs: [{ id: outputPortId, label: 'Output' }],
+        internalGraph: {
+          nodes: [
+            {
+              id: internalInputId,
+              label: 'Input',
+              kind: 'income',
+              baseValue: 0,
+              timeUnit: 'per_month',
+            },
+            {
+              id: internalCalcId,
+              label: 'Output',
+              kind: 'calc',
+              formula: internalInputId,
+            },
+          ],
+          edges: [
+            {
+              id: `edge-${internalInputId}-${internalCalcId}`,
+              source: internalInputId,
+              target: internalCalcId,
+              kind: 'flow',
+            },
+          ],
+        },
+        inputBindings: {
+          [inputPortId]: internalInputId,
+        },
+        outputBindings: {
+          [outputPortId]: internalCalcId,
+        },
+      };
+    }
     cy.add({
       group: 'nodes',
       data: node,
@@ -355,6 +414,19 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     recompute(cy);
   };
 
+  const updateEdgeData = (edgeId: string, data: Partial<EconEdgeData>) => {
+    const edge = cy.getElementById(edgeId);
+    if (!edge) {
+      return;
+    }
+    const current = edge.data() as EconEdgeData;
+    edge.data({
+      ...current,
+      ...data,
+    });
+    recompute(cy);
+  };
+
   const importGraph = (data: GraphData) => {
     cy.elements().remove();
     cy.add(data.nodes.map((node) => ({ data: node })));
@@ -398,6 +470,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
   return {
     cy,
     updateNodeData,
+    updateEdgeData,
     deleteNode,
     deleteEdge,
     importGraph,

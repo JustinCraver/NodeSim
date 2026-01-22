@@ -7,9 +7,11 @@ type ToolbarProps = {
   onImport: (data: GraphData) => void;
   disableCoffee: boolean;
   onToggleCoffee: (value: boolean) => void;
+  isCustomView?: boolean;
+  onExitCustomView?: () => void;
 };
 
-export const Toolbar = ({ onExport, onImport, disableCoffee, onToggleCoffee }: ToolbarProps) => {
+export const Toolbar = ({ onExport, onImport, disableCoffee, onToggleCoffee, isCustomView, onExitCustomView }: ToolbarProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExport = () => {
@@ -47,6 +49,11 @@ export const Toolbar = ({ onExport, onImport, disableCoffee, onToggleCoffee }: T
 
   return (
     <div className="toolbar">
+      {isCustomView && (
+        <button type="button" onClick={onExitCustomView}>
+          Back to Main Graph
+        </button>
+      )}
       <button type="button" onClick={handleExport}>
         Export JSON
       </button>

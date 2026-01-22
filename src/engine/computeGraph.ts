@@ -100,7 +100,7 @@ const toRpn = (tokens: Token[]): RpnToken[] => {
       case 'operator': {
         const prevType = getPrevTokenType(i);
         const opValue =
-          token.value === '-' && (prevType === null || prevType === 'operator' || prevType === 'lparen' || prevType === 'comma')
+          token.value === '-' && (prevType === null || prevType === 'operator' || prevType === 'lparen')
             ? 'u-'
             : token.value;
         const opInfo = OPERATORS[opValue];
@@ -260,11 +260,13 @@ const evaluateFormula = (formula: string, variables: Record<string, number>) => 
   return evaluateRpn(rpn, variables);
 };
 
+const getDefaultPortId = (ports: { id: string }[] | undefined) => ports?.[0]?.id;
+
 const buildIncomingMap = (edges: EconEdgeData[]) => {
-  const incoming = new Map<string, string[]>();
+  const incoming = new Map<string, EconEdgeData[]>();
   for (const edge of edges) {
     const list = incoming.get(edge.target) ?? [];
-    list.push(edge.source);
+    list.push(edge);
     incoming.set(edge.target, list);
   }
   return incoming;
@@ -273,6 +275,7 @@ const buildIncomingMap = (edges: EconEdgeData[]) => {
 export const computeGraph = (nodes: EconNodeData[], edges: EconEdgeData[]): GraphComputeResult => {
   const nodeMap = new Map(nodes.map((node) => [node.id, { ...node }]));
   const errors: Record<string, string> = {};
+  const customOutputs = new Map<string, Map<string, number>>();
 
   const inDegree = new Map<string, number>();
   const outgoing = new Map<string, string[]>();
@@ -319,14 +322,30 @@ export const computeGraph = (nodes: EconNodeData[], edges: EconEdgeData[]): Grap
   }
 
   const incomingMap = buildIncomingMap(edges);
+  const getEdgeValue = (edge: EconEdgeData) => {
+    const sourceNode = nodeMap.get(edge.source);
+    if (!sourceNode) {
+      return 0;
+    }
+    if (sourceNode.kind === 'custom') {
+      const portId = edge.sourcePort ?? getDefaultPortId(sourceNode.custom?.outputs);
+      if (!portId) {
+        return 0;
+      }
+      const outputs = customOutputs.get(sourceNode.id);
+      return outputs?.get(portId) ?? 0;
+    }
+    return sourceNode.computedValue ?? 0;
+  };
 
   for (const nodeId of order) {
     const node = nodeMap.get(nodeId);
     if (!node) {
       continue;
     }
-    const incomingIds = incomingMap.get(nodeId) ?? [];
-    const incomingValues = incomingIds.map((id) => nodeMap.get(id)?.computedValue ?? 0);
+    const incomingEdges = incomingMap.get(nodeId) ?? [];
+    const incomingValues = incomingEdges.map((edge) => getEdgeValue(edge));
+    const incomingIds = incomingEdges.map((edge) => edge.source);
 
     try {
       switch (node.kind) {
@@ -340,7 +359,8 @@ export const computeGraph = (nodes: EconNodeData[], edges: EconEdgeData[]): Grap
           }
           const variables: Record<string, number> = {};
           incomingIds.forEach((id, index) => {
-            variables[id] = incomingValues[index] ?? 0;
+            const value = incomingValues[index] ?? 0;
+            variables[id] = (variables[id] ?? 0) + value;
           });
           node.computedValue = evaluateFormula(node.formula, variables);
           break;
@@ -382,6 +402,97 @@ export const computeGraph = (nodes: EconNodeData[], edges: EconEdgeData[]): Grap
           }
           const monthIndex = series.findIndex((value) => value >= node.targetAmount!);
           node.computedValue = monthIndex === -1 ? -1 : monthIndex + 1;
+          break;
+        }
+        case 'custom': {
+          const customConfig = node.custom;
+          if (!customConfig) {
+            throw new Error('Missing custom config');
+          }
+          const inputPortIds = new Set(customConfig.inputs.map((port) => port.id));
+          const defaultInputPortId = getDefaultPortId(customConfig.inputs);
+          const defaultOutputPortId = getDefaultPortId(customConfig.outputs);
+          const inputTotals = new Map<string, number>();
+          const bindingErrors: string[] = [];
+
+          if (customConfig.inputs.length === 0) {
+            bindingErrors.push('Custom node has no input ports');
+          }
+          if (customConfig.outputs.length === 0) {
+            bindingErrors.push('Custom node has no output ports');
+          }
+
+          incomingEdges.forEach((edge, index) => {
+            const requestedPort = edge.targetPort ?? defaultInputPortId;
+            if (!requestedPort) {
+              return;
+            }
+            if (!inputPortIds.has(requestedPort)) {
+              bindingErrors.push(`Unknown input port ${requestedPort}`);
+              return;
+            }
+            const value = incomingValues[index] ?? 0;
+            inputTotals.set(requestedPort, (inputTotals.get(requestedPort) ?? 0) + value);
+          });
+
+          const internalNodes = customConfig.internalGraph.nodes.map((internal) => ({ ...internal }));
+          const internalEdges = customConfig.internalGraph.edges.map((internal) => ({ ...internal }));
+          const internalNodeMap = new Map(internalNodes.map((internal) => [internal.id, internal]));
+
+          customConfig.inputs.forEach((port) => {
+            const boundId = customConfig.inputBindings[port.id];
+            if (!boundId) {
+              bindingErrors.push(`Missing input binding for ${port.id}`);
+              return;
+            }
+            const targetNode = internalNodeMap.get(boundId);
+            if (!targetNode) {
+              bindingErrors.push(`Invalid input binding for ${port.id}`);
+              return;
+            }
+            if (targetNode.kind !== 'income') {
+              bindingErrors.push(`Input binding ${port.id} must target income`);
+              return;
+            }
+            const value = inputTotals.get(port.id) ?? 0;
+            targetNode.baseValue = value;
+            targetNode.timeUnit = 'per_month';
+          });
+
+          const internalResult = computeGraph(internalNodes, internalEdges);
+          if (Object.keys(internalResult.errors).length > 0) {
+            bindingErrors.push('Internal graph errors');
+          }
+
+          const outputValues = new Map<string, number>();
+          customConfig.outputs.forEach((port) => {
+            const boundId = customConfig.outputBindings[port.id];
+            if (!boundId) {
+              bindingErrors.push(`Missing output binding for ${port.id}`);
+              outputValues.set(port.id, 0);
+              return;
+            }
+            const sourceNode = internalResult.nodes.find((item) => item.id === boundId);
+            if (!sourceNode) {
+              bindingErrors.push(`Invalid output binding for ${port.id}`);
+              outputValues.set(port.id, 0);
+              return;
+            }
+            outputValues.set(port.id, sourceNode.computedValue ?? 0);
+          });
+
+          if (!defaultOutputPortId) {
+            node.computedValue = 0;
+          } else if (customConfig.outputs.length === 1) {
+            node.computedValue = outputValues.get(defaultOutputPortId) ?? 0;
+          } else {
+            node.computedValue = customConfig.outputs.reduce((sum, port) => sum + (outputValues.get(port.id) ?? 0), 0);
+          }
+
+          if (bindingErrors.length > 0) {
+            errors[node.id] = bindingErrors.join('; ');
+          }
+          customOutputs.set(node.id, outputValues);
           break;
         }
         default:

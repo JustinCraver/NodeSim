@@ -1,5 +1,18 @@
-export type NodeKind = 'income' | 'expense' | 'calc' | 'asset' | 'output';
+export type NodeKind = 'income' | 'expense' | 'calc' | 'asset' | 'output' | 'custom';
 export type TimeUnit = 'per_day' | 'per_week' | 'per_month' | 'per_year';
+
+export type PortDef = {
+  id: string;
+  label: string;
+};
+
+export type CustomNodeConfig = {
+  inputs: PortDef[];
+  outputs: PortDef[];
+  internalGraph: GraphData;
+  inputBindings: Record<string, string>;
+  outputBindings: Record<string, string>;
+};
 
 export interface EconNodeData {
   id: string;
@@ -10,6 +23,7 @@ export interface EconNodeData {
   formula?: string;
   interestRateAnnual?: number;
   targetAmount?: number;
+  custom?: CustomNodeConfig;
   computedValue?: number;
   timeseries?: number[];
 }
@@ -19,6 +33,8 @@ export interface EconEdgeData {
   source: string;
   target: string;
   kind: 'flow';
+  sourcePort?: string;
+  targetPort?: string;
   weight?: number;
   lagMonths?: number;
 }
