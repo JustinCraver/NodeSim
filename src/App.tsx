@@ -15,6 +15,20 @@ type CustomViewState = {
   customNodeId: string;
 };
 
+const getInitialTheme = (): 'light' | 'dark' => {
+  if (typeof window === 'undefined') {
+    return 'light';
+  }
+  const stored = window.localStorage.getItem('theme');
+  if (stored === 'light' || stored === 'dark') {
+    return stored;
+  }
+  if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
+    return 'dark';
+  }
+  return 'light';
+};
+
 const ensureCustomInputs = (custom: CustomNodeConfig) => {
   const internalGraph = {
     nodes: custom.internalGraph.nodes.map((node) => ({ ...node })),
@@ -63,6 +77,7 @@ export const App = () => {
   const [nodeScale, setNodeScale] = useState(1);
   const [customView, setCustomView] = useState<CustomViewState | null>(null);
   const customViewRef = useRef<CustomViewState | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
 
   const handleOpenCustomNode = (node: EconNodeData) => {
     if (customViewRef.current) {
@@ -114,6 +129,14 @@ export const App = () => {
       onOpenCustomNode: handleOpenCustomNode,
     });
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem('theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     const controller = controllerRef.current;
@@ -238,6 +261,8 @@ export const App = () => {
           onNodeScaleChange={setNodeScale}
           isCustomView={Boolean(customView)}
           onExitCustomView={customView ? handleExitCustomView : undefined}
+          theme={theme}
+          onToggleTheme={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
         />
         <div className="canvas" ref={containerRef} />
       </div>

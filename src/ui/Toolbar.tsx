@@ -11,6 +11,8 @@ type ToolbarProps = {
   onNodeScaleChange: (value: number) => void;
   isCustomView?: boolean;
   onExitCustomView?: () => void;
+  theme: 'light' | 'dark';
+  onToggleTheme: () => void;
 };
 
 export const Toolbar = ({
@@ -22,6 +24,8 @@ export const Toolbar = ({
   onNodeScaleChange,
   isCustomView,
   onExitCustomView,
+  theme,
+  onToggleTheme,
 }: ToolbarProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -87,6 +91,14 @@ export const Toolbar = ({
         />
         <span>{Math.round(nodeScale * 100)}%</span>
       </label>
+      <button
+        type="button"
+        className="toolbar-toggle"
+        onClick={onToggleTheme}
+        aria-pressed={theme === 'dark'}
+      >
+        {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+      </button>
       <input ref={fileInputRef} type="file" accept="application/json" onChange={handleFileChange} hidden />
     </div>
   );

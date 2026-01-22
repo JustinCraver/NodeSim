@@ -87,7 +87,177 @@ const formatMathInputs = (node: EconNodeData) => {
   };
 };
 
-const buildPortOverlay = (node: EconNodeData, scale: number) => {
+type ThemePalette = {
+  mode: 'light' | 'dark';
+  node: {
+    baseBg: string;
+    baseBorder: string;
+    baseText: string;
+    selectedBg: string;
+    selectedBorder: string;
+    selectedText: string;
+    hoverBorder: string;
+  };
+  edge: {
+    base: string;
+    selected: string;
+    hoverGlow: string;
+  };
+  kinds: {
+    expense: { bg: string; border: string };
+    calc: { bg: string; border: string };
+    asset: { bg: string; border: string };
+    output: { bg: string; border: string };
+    custom: { bg: string; border: string };
+    value: { bg: string; border: string };
+    add: { bg: string; border: string };
+    subtract: { bg: string; border: string };
+    multiply: { bg: string; border: string };
+    divide: { bg: string; border: string };
+  };
+  port: {
+    fill: string;
+    stroke: string;
+    text: string;
+    glow: string;
+  };
+};
+
+const readThemePalette = (): ThemePalette => {
+  const styles = getComputedStyle(document.documentElement);
+  const readVar = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback;
+  const mode = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+  return {
+    mode,
+    node: {
+      baseBg: readVar('--cy-node-bg', '#2563eb'),
+      baseBorder: readVar('--cy-node-border', '#1e3a8a'),
+      baseText: readVar('--cy-node-text', '#0f172a'),
+      selectedBg: readVar('--cy-node-selected-bg', '#1d4ed8'),
+      selectedBorder: readVar('--cy-node-selected-border', '#0ea5e9'),
+      selectedText: readVar('--cy-node-selected-text', '#e2e8f0'),
+      hoverBorder: readVar('--cy-node-hover-border', '#38bdf8'),
+    },
+    edge: {
+      base: readVar('--cy-edge', '#94a3b8'),
+      selected: readVar('--cy-edge-selected', '#0ea5e9'),
+      hoverGlow: readVar('--cy-edge-hover-glow', '#3b82f6'),
+    },
+    kinds: {
+      expense: {
+        bg: readVar('--cy-node-expense-bg', '#f97316'),
+        border: readVar('--cy-node-expense-border', '#c2410c'),
+      },
+      calc: {
+        bg: readVar('--cy-node-calc-bg', '#22c55e'),
+        border: readVar('--cy-node-calc-border', '#15803d'),
+      },
+      asset: {
+        bg: readVar('--cy-node-asset-bg', '#eab308'),
+        border: readVar('--cy-node-asset-border', '#a16207'),
+      },
+      output: {
+        bg: readVar('--cy-node-output-bg', '#f472b6'),
+        border: readVar('--cy-node-output-border', '#be185d'),
+      },
+      custom: {
+        bg: readVar('--cy-node-custom-bg', '#a855f7'),
+        border: readVar('--cy-node-custom-border', '#7e22ce'),
+      },
+      value: {
+        bg: readVar('--cy-node-value-bg', '#64748b'),
+        border: readVar('--cy-node-value-border', '#475569'),
+      },
+      add: {
+        bg: readVar('--cy-node-add-bg', '#14b8a6'),
+        border: readVar('--cy-node-add-border', '#0f766e'),
+      },
+      subtract: {
+        bg: readVar('--cy-node-subtract-bg', '#ef4444'),
+        border: readVar('--cy-node-subtract-border', '#b91c1c'),
+      },
+      multiply: {
+        bg: readVar('--cy-node-multiply-bg', '#22d3ee'),
+        border: readVar('--cy-node-multiply-border', '#0891b2'),
+      },
+      divide: {
+        bg: readVar('--cy-node-divide-bg', '#f59e0b'),
+        border: readVar('--cy-node-divide-border', '#b45309'),
+      },
+    },
+    port: {
+      fill: readVar('--cy-port-fill', '#0ea5e9'),
+      stroke: readVar('--cy-port-stroke', '#0f172a'),
+      text: readVar('--cy-port-text', '#0f172a'),
+      glow: readVar('--cy-port-glow', '#38bdf8'),
+    },
+  };
+};
+
+const clampByte = (value: number) => Math.max(0, Math.min(255, Math.round(value)));
+
+const parseHex = (hex: string) => {
+  const normalized = hex.replace('#', '').trim();
+  if (normalized.length === 3) {
+    const r = parseInt(normalized[0] + normalized[0], 16);
+    const g = parseInt(normalized[1] + normalized[1], 16);
+    const b = parseInt(normalized[2] + normalized[2], 16);
+    return { r, g, b };
+  }
+  if (normalized.length === 6) {
+    const r = parseInt(normalized.slice(0, 2), 16);
+    const g = parseInt(normalized.slice(2, 4), 16);
+    const b = parseInt(normalized.slice(4, 6), 16);
+    return { r, g, b };
+  }
+  return { r: 255, g: 255, b: 255 };
+};
+
+const toHex = (value: number) => clampByte(value).toString(16).padStart(2, '0');
+
+const adjustHex = (hex: string, amount: number) => {
+  const { r, g, b } = parseHex(hex);
+  if (amount >= 0) {
+    return `#${toHex(r + (255 - r) * amount)}${toHex(g + (255 - g) * amount)}${toHex(b + (255 - b) * amount)}`;
+  }
+  const factor = 1 + amount;
+  return `#${toHex(r * factor)}${toHex(g * factor)}${toHex(b * factor)}`;
+};
+
+const getNodeBg = (palette: ThemePalette, kind: NodeKind) => {
+  switch (kind) {
+    case 'expense':
+      return palette.kinds.expense.bg;
+    case 'calc':
+      return palette.kinds.calc.bg;
+    case 'asset':
+      return palette.kinds.asset.bg;
+    case 'output':
+      return palette.kinds.output.bg;
+    case 'custom':
+      return palette.kinds.custom.bg;
+    case 'value':
+      return palette.kinds.value.bg;
+    case 'add':
+      return palette.kinds.add.bg;
+    case 'subtract':
+      return palette.kinds.subtract.bg;
+    case 'multiply':
+      return palette.kinds.multiply.bg;
+    case 'divide':
+      return palette.kinds.divide.bg;
+    default:
+      return palette.node.baseBg;
+  }
+};
+
+const getGlowColor = (palette: ThemePalette, kind: NodeKind) => {
+  const base = getNodeBg(palette, kind);
+  const amount = palette.mode === 'dark' ? 0.35 : -0.35;
+  return adjustHex(base, amount);
+};
+
+const buildPortOverlay = (node: EconNodeData, scale: number, palette: ThemePalette) => {
   const { left, right } = formatMathInputs(node);
   const width = scaleValue(BASE_PORT_OVERLAY_WIDTH, scale);
   const height = scaleValue(BASE_PORT_OVERLAY_HEIGHT, scale);
@@ -99,21 +269,21 @@ const buildPortOverlay = (node: EconNodeData, scale: number) => {
   const textY = scaleValue(BASE_PORT_TEXT_Y, scale);
   const textSize = scaleValue(BASE_PORT_TEXT_SIZE, scale);
   const glowStd = Math.max(1, scaleValue(BASE_PORT_GLOW_STD, scale));
-  const leftFill = node.input1Connected ? '#0ea5e9' : 'none';
-  const rightFill = node.input2Connected ? '#0ea5e9' : 'none';
+  const leftFill = node.input1Connected ? palette.port.fill : 'none';
+  const rightFill = node.input2Connected ? palette.port.fill : 'none';
   const leftGlow = node.input1Connected ? 'url(#portGlow)' : 'none';
   const rightGlow = node.input2Connected ? 'url(#portGlow)' : 'none';
   const svg = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
     '<defs>',
     '<filter id="portGlow" x="-50%" y="-50%" width="200%" height="200%">',
-    `<feDropShadow dx="0" dy="0" stdDeviation="${glowStd}" flood-color="#38bdf8" flood-opacity="0.9" />`,
+    `<feDropShadow dx="0" dy="0" stdDeviation="${glowStd}" flood-color="${palette.port.glow}" flood-opacity="0.9" />`,
     '</filter>',
     '</defs>',
-    `<circle cx="${leftX}" cy="${circleY}" r="${circleRadius}" fill="${leftFill}" stroke="#0f172a" stroke-width="${circleStroke}" filter="${leftGlow}" />`,
-    `<circle cx="${rightX}" cy="${circleY}" r="${circleRadius}" fill="${rightFill}" stroke="#0f172a" stroke-width="${circleStroke}" filter="${rightGlow}" />`,
-    `<text x="${leftX}" y="${textY}" text-anchor="middle" font-size="${textSize}" fill="#0f172a">${left}</text>`,
-    `<text x="${rightX}" y="${textY}" text-anchor="middle" font-size="${textSize}" fill="#0f172a">${right}</text>`,
+    `<circle cx="${leftX}" cy="${circleY}" r="${circleRadius}" fill="${leftFill}" stroke="${palette.port.stroke}" stroke-width="${circleStroke}" filter="${leftGlow}" />`,
+    `<circle cx="${rightX}" cy="${circleY}" r="${circleRadius}" fill="${rightFill}" stroke="${palette.port.stroke}" stroke-width="${circleStroke}" filter="${rightGlow}" />`,
+    `<text x="${leftX}" y="${textY}" text-anchor="middle" font-size="${textSize}" fill="${palette.port.text}">${left}</text>`,
+    `<text x="${rightX}" y="${textY}" text-anchor="middle" font-size="${textSize}" fill="${palette.port.text}">${right}</text>`,
     '</svg>',
   ].join('');
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
@@ -190,26 +360,218 @@ const hasMeaningfulPositions = (nodes: EconNodeData[]) => {
 const toCyNodeElement = (node: EconNodeData) =>
   hasValidPosition(node.position) ? { data: node, position: node.position } : { data: node };
 
-const applyComputeResults = (cy: Core, result: GraphComputeResult, scale: number) => {
+const applyComputeResults = (cy: Core, result: GraphComputeResult, scale: number, palette: ThemePalette) => {
   result.nodes.forEach((node) => {
     const element = cy.getElementById(node.id);
     if (element) {
       const error = result.errors[node.id];
-      const portOverlay = isMathKind(node.kind) ? buildPortOverlay(node, scale) : undefined;
+      const portOverlay = isMathKind(node.kind) ? buildPortOverlay(node, scale, palette) : undefined;
+      const glowColor = getGlowColor(palette, node.kind);
       element.data({
         ...node,
         displayLabel: formatNodeLabel(node, error),
         portOverlay,
+        glowColor,
       });
     }
   });
 };
 
-const recompute = (cy: Core, scale: number) => {
+const recompute = (cy: Core, scale: number, palette: ThemePalette) => {
   const graphData = graphDataFromCy(cy, scale);
   const result = computeGraph(graphData.nodes, graphData.edges);
-  applyComputeResults(cy, result, scale);
+  applyComputeResults(cy, result, scale, palette);
 };
+
+const buildStyles = (palette: ThemePalette) => [
+  {
+    selector: 'node',
+    style: {
+      'background-color': palette.node.baseBg,
+      label: 'data(displayLabel)',
+      color: palette.node.baseText,
+      'text-valign': 'center',
+      'text-halign': 'center',
+      'text-wrap': 'wrap',
+      'text-max-width': `${BASE_TEXT_MAX_WIDTH}px`,
+      'font-size': BASE_NODE_FONT_SIZE,
+      'transition-property': 'opacity',
+      'transition-duration': '180ms',
+      'border-width': 2,
+      'border-color': palette.node.baseBorder,
+      width: BASE_NODE_WIDTH,
+      height: BASE_NODE_HEIGHT,
+      'shape': 'roundrectangle',
+    },
+  },
+  {
+    selector: 'node:selected',
+    style: {
+      'border-width': 10,
+      'border-color': palette.node.selectedBorder,
+      'background-color': palette.node.selectedBg,
+      color: palette.node.selectedText,
+      opacity: 1,
+      'shadow-blur': 18,
+      'shadow-color': 'data(glowColor)',
+      'shadow-opacity': 0.85,
+      'shadow-offset-x': 0,
+      'shadow-offset-y': 0,
+    },
+  },
+  {
+    selector: 'node.hovered',
+    style: {
+      'border-width': 7,
+      'border-color': palette.node.hoverBorder,
+      opacity: 1,
+      'shadow-blur': 12,
+      'shadow-color': 'data(glowColor)',
+      'shadow-opacity': 0.75,
+      'shadow-offset-x': 0,
+      'shadow-offset-y': 0,
+    },
+  },
+  {
+    selector: 'node.dimmed',
+    style: {
+      opacity: 0.75,
+    },
+  },
+  {
+    selector: 'edge',
+    style: {
+      width: 2,
+      'line-color': palette.edge.base,
+      'target-arrow-color': palette.edge.base,
+      'target-arrow-shape': 'triangle',
+      'curve-style': 'bezier',
+      'z-index': 10,
+      'z-compound-depth': 'top',
+    },
+  },
+  {
+    selector: 'edge:selected',
+    style: {
+      width: 3,
+      'line-color': palette.edge.selected,
+      'target-arrow-color': palette.edge.selected,
+    },
+  },
+  {
+    selector: 'edge.hovered',
+    style: {
+      width: 3,
+      'line-color': palette.edge.selected,
+      'target-arrow-color': palette.edge.selected,
+      'shadow-blur': 12,
+      'shadow-color': palette.edge.hoverGlow,
+      'shadow-opacity': 0.85,
+      'shadow-offset-x': 0,
+      'shadow-offset-y': 0,
+    },
+  },
+  {
+    selector: 'node[kind = "add"], node[kind = "subtract"], node[kind = "multiply"], node[kind = "divide"]',
+    style: {
+      'background-image': 'data(portOverlay)',
+      'background-fit': 'none',
+      'background-width': BASE_NODE_WIDTH,
+      'background-height': BASE_NODE_HEIGHT,
+      'background-position-x': 0,
+      'background-position-y': 0,
+    },
+  },
+  {
+    selector: 'edge[targetPort = "1"], edge[targetPort = "left"]',
+    style: {
+      'target-endpoint': `-${BASE_PORT_TARGET_OFFSET} -${BASE_PORT_TARGET_OFFSET}`,
+    },
+  },
+  {
+    selector: 'edge[targetPort = "2"], edge[targetPort = "right"]',
+    style: {
+      'target-endpoint': `${BASE_PORT_TARGET_OFFSET} -${BASE_PORT_TARGET_OFFSET}`,
+    },
+  },
+  {
+    selector: 'node[kind = "add"], node[kind = "subtract"], node[kind = "multiply"], node[kind = "divide"]',
+    style: {
+      'text-valign': 'center',
+      'text-margin-y': 0,
+    },
+  },
+  {
+    selector: 'node[kind = "expense"]',
+    style: {
+      'background-color': palette.kinds.expense.bg,
+      'border-color': palette.kinds.expense.border,
+    },
+  },
+  {
+    selector: 'node[kind = "calc"]',
+    style: {
+      'background-color': palette.kinds.calc.bg,
+      'border-color': palette.kinds.calc.border,
+    },
+  },
+  {
+    selector: 'node[kind = "asset"]',
+    style: {
+      'background-color': palette.kinds.asset.bg,
+      'border-color': palette.kinds.asset.border,
+    },
+  },
+  {
+    selector: 'node[kind = "output"]',
+    style: {
+      'background-color': palette.kinds.output.bg,
+      'border-color': palette.kinds.output.border,
+    },
+  },
+  {
+    selector: 'node[kind = "custom"]',
+    style: {
+      'background-color': palette.kinds.custom.bg,
+      'border-color': palette.kinds.custom.border,
+    },
+  },
+  {
+    selector: 'node[kind = "value"]',
+    style: {
+      'background-color': palette.kinds.value.bg,
+      'border-color': palette.kinds.value.border,
+    },
+  },
+  {
+    selector: 'node[kind = "add"]',
+    style: {
+      'background-color': palette.kinds.add.bg,
+      'border-color': palette.kinds.add.border,
+    },
+  },
+  {
+    selector: 'node[kind = "subtract"]',
+    style: {
+      'background-color': palette.kinds.subtract.bg,
+      'border-color': palette.kinds.subtract.border,
+    },
+  },
+  {
+    selector: 'node[kind = "multiply"]',
+    style: {
+      'background-color': palette.kinds.multiply.bg,
+      'border-color': palette.kinds.multiply.border,
+    },
+  },
+  {
+    selector: 'node[kind = "divide"]',
+    style: {
+      'background-color': palette.kinds.divide.bg,
+      'border-color': palette.kinds.divide.border,
+    },
+  },
+];
 
 export const createCytoscape = (container: HTMLDivElement, graphData: GraphData, callbacks: GraphCallbacks = {}) => {
   container.addEventListener('contextmenu', (event) => {
@@ -217,6 +579,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
   });
 
   const hasInitialPositions = hasMeaningfulPositions(graphData.nodes);
+  let themePalette = readThemePalette();
 
   const cy = cytoscape({
     container,
@@ -224,162 +587,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       nodes: graphData.nodes.map((node) => toCyNodeElement(node)),
       edges: graphData.edges.map((edge) => ({ data: edge })),
     },
-    style: [
-      {
-        selector: 'node',
-        style: {
-          'background-color': '#2563eb',
-          label: 'data(displayLabel)',
-          color: '#0f172a',
-          'text-valign': 'center',
-          'text-halign': 'center',
-          'text-wrap': 'wrap',
-          'text-max-width': `${BASE_TEXT_MAX_WIDTH}px`,
-          'font-size': BASE_NODE_FONT_SIZE,
-          'border-width': 2,
-          'border-color': '#1e3a8a',
-          width: BASE_NODE_WIDTH,
-          height: BASE_NODE_HEIGHT,
-          'shape': 'roundrectangle',
-        },
-      },
-      {
-        selector: 'node:selected',
-        style: {
-          'border-width': 4,
-          'border-color': '#0ea5e9',
-          'background-color': '#1d4ed8',
-          color: '#e2e8f0',
-        },
-      },
-      {
-        selector: 'node.hovered',
-        style: {
-          'border-width': 3,
-          'border-color': '#38bdf8',
-        },
-      },
-      {
-        selector: 'edge',
-        style: {
-          width: 2,
-          'line-color': '#94a3b8',
-          'target-arrow-color': '#94a3b8',
-          'target-arrow-shape': 'triangle',
-          'curve-style': 'bezier',
-          'z-index': 10,
-          'z-compound-depth': 'top',
-        },
-      },
-      {
-        selector: 'edge:selected',
-        style: {
-          width: 3,
-          'line-color': '#0ea5e9',
-          'target-arrow-color': '#0ea5e9',
-        },
-      },
-      {
-        selector: 'node[kind = "add"], node[kind = "subtract"], node[kind = "multiply"], node[kind = "divide"]',
-        style: {
-          'background-image': 'data(portOverlay)',
-          'background-fit': 'none',
-          'background-width': BASE_NODE_WIDTH,
-          'background-height': BASE_NODE_HEIGHT,
-          'background-position-x': 0,
-          'background-position-y': 0,
-        },
-      },
-      {
-        selector: 'edge[targetPort = "1"], edge[targetPort = "left"]',
-        style: {
-          'target-endpoint': `-${BASE_PORT_TARGET_OFFSET} -${BASE_PORT_TARGET_OFFSET}`,
-        },
-      },
-      {
-        selector: 'edge[targetPort = "2"], edge[targetPort = "right"]',
-        style: {
-          'target-endpoint': `${BASE_PORT_TARGET_OFFSET} -${BASE_PORT_TARGET_OFFSET}`,
-        },
-      },
-      {
-        selector: 'node[kind = "add"], node[kind = "subtract"], node[kind = "multiply"], node[kind = "divide"]',
-        style: {
-          'text-valign': 'center',
-          'text-margin-y': 0,
-        },
-      },
-      {
-        selector: 'node[kind = "expense"]',
-        style: {
-          'background-color': '#f97316',
-          'border-color': '#c2410c',
-        },
-      },
-      {
-        selector: 'node[kind = "calc"]',
-        style: {
-          'background-color': '#22c55e',
-          'border-color': '#15803d',
-        },
-      },
-      {
-        selector: 'node[kind = "asset"]',
-        style: {
-          'background-color': '#eab308',
-          'border-color': '#a16207',
-        },
-      },
-      {
-        selector: 'node[kind = "output"]',
-        style: {
-          'background-color': '#f472b6',
-          'border-color': '#be185d',
-        },
-      },
-      {
-        selector: 'node[kind = "custom"]',
-        style: {
-          'background-color': '#a855f7',
-          'border-color': '#7e22ce',
-        },
-      },
-      {
-        selector: 'node[kind = "value"]',
-        style: {
-          'background-color': '#64748b',
-          'border-color': '#475569',
-        },
-      },
-      {
-        selector: 'node[kind = "add"]',
-        style: {
-          'background-color': '#14b8a6',
-          'border-color': '#0f766e',
-        },
-      },
-      {
-        selector: 'node[kind = "subtract"]',
-        style: {
-          'background-color': '#ef4444',
-          'border-color': '#b91c1c',
-        },
-      },
-      {
-        selector: 'node[kind = "multiply"]',
-        style: {
-          'background-color': '#22d3ee',
-          'border-color': '#0891b2',
-        },
-      },
-      {
-        selector: 'node[kind = "divide"]',
-        style: {
-          'background-color': '#f59e0b',
-          'border-color': '#b45309',
-        },
-      },
-    ],
+    style: buildStyles(themePalette),
     layout: hasInitialPositions
       ? { name: 'preset' }
       : {
@@ -424,19 +632,31 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
   const setNodeScale = (scale: number) => {
     nodeScale = Math.max(0.1, scale);
     applyNodeScale(nodeScale);
-    recompute(cy, nodeScale);
+    recompute(cy, nodeScale, themePalette);
   };
 
-  recompute(cy, nodeScale);
+  recompute(cy, nodeScale, themePalette);
+
+  const updateFocusDimming = () => {
+    const hasFocused = cy.nodes(':selected, .hovered').length > 0;
+    if (!hasFocused) {
+      cy.nodes('.dimmed').removeClass('dimmed');
+      return;
+    }
+    cy.nodes().not(':selected').not('.hovered').addClass('dimmed');
+    cy.nodes(':selected, .hovered').removeClass('dimmed');
+  };
 
   cy.on('select', 'node', (event) => {
     cy.edges(':selected').unselect();
     const node = event.target.data() as EconNodeData;
     callbacks.onSelectNode?.({ ...node });
+    updateFocusDimming();
   });
 
   cy.on('unselect', 'node', () => {
     callbacks.onSelectNode?.(null);
+    updateFocusDimming();
   });
 
   cy.on('dbltap', 'node', (event) => {
@@ -449,20 +669,32 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
 
   cy.on('mouseover', 'node', (event) => {
     event.target.addClass('hovered');
+    updateFocusDimming();
   });
 
   cy.on('mouseout', 'node', (event) => {
     event.target.removeClass('hovered');
+    updateFocusDimming();
   });
 
   cy.on('select', 'edge', (event) => {
     cy.nodes(':selected').unselect();
     const edge = event.target.data() as EconEdgeData;
     callbacks.onSelectEdge?.({ ...edge });
+    updateFocusDimming();
   });
 
   cy.on('unselect', 'edge', () => {
     callbacks.onSelectEdge?.(null);
+    updateFocusDimming();
+  });
+
+  cy.on('mouseover', 'edge', (event) => {
+    event.target.addClass('hovered');
+  });
+
+  cy.on('mouseout', 'edge', (event) => {
+    event.target.removeClass('hovered');
   });
 
   let nodeSequence = 1;
@@ -534,7 +766,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       data: node,
       position,
     });
-    recompute(cy, nodeScale);
+    recompute(cy, nodeScale, themePalette);
     cy.getElementById(id)?.select();
   };
 
@@ -606,7 +838,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
             kind: 'flow',
           },
         });
-        recompute(cy, nodeScale);
+        recompute(cy, nodeScale, themePalette);
         hideEdgePortMenu();
       });
       menu.appendChild(button);
@@ -725,11 +957,11 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
         kind: 'flow',
       },
     });
-    recompute(cy, nodeScale);
+    recompute(cy, nodeScale, themePalette);
   });
 
   cy.on('remove add', 'edge', () => {
-    recompute(cy, nodeScale);
+    recompute(cy, nodeScale, themePalette);
   });
 
   const handleGlobalPointerDown = (event: PointerEvent) => {
@@ -763,7 +995,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       ...current,
       ...data,
     });
-    recompute(cy, nodeScale);
+    recompute(cy, nodeScale, themePalette);
   };
 
   const updateEdgeData = (edgeId: string, data: Partial<EconEdgeData>) => {
@@ -776,7 +1008,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       ...current,
       ...data,
     });
-    recompute(cy, nodeScale);
+    recompute(cy, nodeScale, themePalette);
   };
 
   const importGraph = (data: GraphData) => {
@@ -786,7 +1018,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     cy.elements().remove();
     cy.add(data.nodes.map((node) => toCyNodeElement(node)));
     cy.add(data.edges.map((edge) => ({ data: edge })));
-    recompute(cy, nodeScale);
+    recompute(cy, nodeScale, themePalette);
     const hasPositions = hasMeaningfulPositions(data.nodes);
     if (hasPositions) {
       cy.layout({ name: 'preset' }).run();
@@ -813,7 +1045,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     // Remove the node itself
     node.remove();
     // Recompute after a brief delay to ensure DOM updates are complete
-    setTimeout(() => recompute(cy, nodeScale), 0);
+    setTimeout(() => recompute(cy, nodeScale, themePalette), 0);
   };
 
   const deleteEdge = (edgeId: string) => {
@@ -825,10 +1057,23 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       edge.unselect();
     }
     edge.remove();
-    setTimeout(() => recompute(cy, nodeScale), 0);
+    setTimeout(() => recompute(cy, nodeScale, themePalette), 0);
   };
 
   const exportGraph = (): GraphData => graphDataFromCy(cy, nodeScale);
+
+  if (typeof MutationObserver !== 'undefined') {
+    const observer = new MutationObserver((mutations) => {
+      if (!mutations.some((mutation) => mutation.type === 'attributes' && mutation.attributeName === 'data-theme')) {
+        return;
+      }
+      themePalette = readThemePalette();
+      cy.style().fromJson(buildStyles(themePalette)).update();
+      applyNodeScale(nodeScale);
+      recompute(cy, nodeScale, themePalette);
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  }
 
   return {
     cy,
