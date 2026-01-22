@@ -8,14 +8,17 @@ type GraphCallbacks = {
   onOpenCustomNode?: (node: EconNodeData) => void;
 };
 
-const NODE_KIND_OPTIONS: { kind: NodeKind; label: string }[] = [
-  { kind: 'income', label: 'Income' },
-  { kind: 'expense', label: 'Expense' },
+const BASIC_NODE_OPTIONS: { kind: NodeKind; label: string }[] = [
   { kind: 'value', label: 'Value' },
   { kind: 'add', label: 'Add' },
   { kind: 'subtract', label: 'Subtract' },
   { kind: 'multiply', label: 'Multiply' },
   { kind: 'divide', label: 'Divide' },
+];
+
+const ECON_NODE_OPTIONS: { kind: NodeKind; label: string }[] = [
+  { kind: 'income', label: 'Income' },
+  { kind: 'expense', label: 'Expense' },
   { kind: 'calc', label: 'Calc' },
   { kind: 'asset', label: 'Asset' },
   { kind: 'output', label: 'Output' },
@@ -410,19 +413,31 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       menu.addEventListener('click', (event) => {
         event.stopPropagation();
       });
-      NODE_KIND_OPTIONS.forEach((option) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.textContent = option.label;
-        button.addEventListener('click', () => {
-          if (!pendingCreatePosition) {
-            return;
-          }
-          createNodeAt(pendingCreatePosition, option.kind);
-          hideContextMenu();
+      const addSection = (title: string, options: { kind: NodeKind; label: string }[]) => {
+        const heading = document.createElement('div');
+        heading.className = 'context-menu-section';
+        heading.textContent = title;
+        menu.appendChild(heading);
+        options.forEach((option) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = option.label;
+          button.addEventListener('click', () => {
+            if (!pendingCreatePosition) {
+              return;
+            }
+            createNodeAt(pendingCreatePosition, option.kind);
+            hideContextMenu();
+          });
+          menu.appendChild(button);
         });
-        menu.appendChild(button);
-      });
+      };
+
+      addSection('Basic Math', BASIC_NODE_OPTIONS);
+      const divider = document.createElement('div');
+      divider.className = 'context-menu-divider';
+      menu.appendChild(divider);
+      addSection('Economy', ECON_NODE_OPTIONS);
       container.appendChild(menu);
       contextMenu = menu;
     }
