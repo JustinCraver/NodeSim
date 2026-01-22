@@ -31,6 +31,7 @@ body {
 
 .canvas {
   flex: 1;
+  position: relative;
 }
 
 .panel {
@@ -94,4 +95,32 @@ body {
   align-items: center;
   gap: 6px;
   font-size: 14px;
+}
+
+.context-menu {
+  position: absolute;
+  z-index: 10;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.25);
+}
+
+.context-menu button {
+  display: block;
+  width: 140px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: none;
+  background: #1e293b;
+  color: #e2e8f0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.context-menu button:hover {
+  background: #334155;
 }

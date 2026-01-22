@@ -1,11 +1,19 @@
 import cytoscape, { type Core } from 'cytoscape';
-import type { EconEdgeData, EconNodeData, GraphComputeResult, GraphData } from '../models/types';
+import type { EconEdgeData, EconNodeData, GraphComputeResult, GraphData, NodeKind } from '../models/types';
 import { computeGraph } from '../engine/computeGraph';
 
 type GraphCallbacks = {
   onSelectNode?: (node: EconNodeData | null) => void;
   onSelectEdge?: (edge: EconEdgeData | null) => void;
 };
+
+const NODE_KIND_OPTIONS: { kind: NodeKind; label: string }[] = [
+  { kind: 'income', label: 'Income' },
+  { kind: 'expense', label: 'Expense' },
+  { kind: 'calc', label: 'Calc' },
+  { kind: 'asset', label: 'Asset' },
+  { kind: 'output', label: 'Output' },
+];
 
 const formatCurrency = (value: number) => {
   if (Number.isNaN(value)) {
@@ -217,15 +225,17 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
   });
 
   let nodeSequence = 1;
+  let pendingCreatePosition: { x: number; y: number } | null = null;
+  let contextMenu: HTMLDivElement | null = null;
 
-  const createNodeAt = (position: { x: number; y: number }) => {
+  const createNodeAt = (position: { x: number; y: number }, kind: NodeKind) => {
     const id = `node-${Date.now()}-${nodeSequence}`;
     const label = `Node ${cy.nodes().length + 1}`;
     nodeSequence += 1;
     const node: EconNodeData = {
       id,
       label,
-      kind: 'income',
+      kind,
       baseValue: 0,
       timeUnit: 'per_month',
     };
@@ -238,14 +248,61 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     cy.getElementById(id)?.select();
   };
 
+  const hideContextMenu = () => {
+    if (!contextMenu) {
+      return;
+    }
+    contextMenu.style.display = 'none';
+    pendingCreatePosition = null;
+  };
+
+  const showContextMenu = (renderedPosition: { x: number; y: number }, position: { x: number; y: number }) => {
+    if (!contextMenu) {
+      const menu = document.createElement('div');
+      menu.className = 'context-menu';
+      menu.style.display = 'none';
+      menu.addEventListener('click', (event) => {
+        event.stopPropagation();
+      });
+      NODE_KIND_OPTIONS.forEach((option) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = option.label;
+        button.addEventListener('click', () => {
+          if (!pendingCreatePosition) {
+            return;
+          }
+          createNodeAt(pendingCreatePosition, option.kind);
+          hideContextMenu();
+        });
+        menu.appendChild(button);
+      });
+      container.appendChild(menu);
+      contextMenu = menu;
+    }
+
+    pendingCreatePosition = position;
+    contextMenu.style.display = 'flex';
+    contextMenu.style.left = `${renderedPosition.x}px`;
+    contextMenu.style.top = `${renderedPosition.y}px`;
+
+    const maxX = container.clientWidth - contextMenu.offsetWidth - 8;
+    const maxY = container.clientHeight - contextMenu.offsetHeight - 8;
+    const clampedX = Math.max(8, Math.min(renderedPosition.x, maxX));
+    const clampedY = Math.max(8, Math.min(renderedPosition.y, maxY));
+    contextMenu.style.left = `${clampedX}px`;
+    contextMenu.style.top = `${clampedY}px`;
+  };
+
   cy.on('cxttap', (event) => {
     if (event.target !== cy) {
       return;
     }
-    createNodeAt(event.position);
+    showContextMenu(event.renderedPosition, event.position);
   });
 
   cy.on('cxttap', 'node', (event) => {
+    hideContextMenu();
     const targetNode = event.target;
     const selectedNode = cy.nodes(':selected').first();
     if (!selectedNode || selectedNode.empty()) {
@@ -270,6 +327,20 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
   cy.on('remove add', 'edge', () => {
     recompute(cy);
   });
+
+  const handleGlobalPointerDown = (event: PointerEvent) => {
+    if (!contextMenu || contextMenu.style.display === 'none') {
+      return;
+    }
+    const target = event.target as Node | null;
+    if (target && contextMenu.contains(target)) {
+      return;
+    }
+    hideContextMenu();
+  };
+
+  document.addEventListener('pointerdown', handleGlobalPointerDown, true);
+  container.addEventListener('scroll', hideContextMenu);
 
   const updateNodeData = (nodeId: string, data: Partial<EconNodeData>) => {
     const node = cy.getElementById(nodeId);
