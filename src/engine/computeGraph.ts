@@ -410,7 +410,11 @@ export const computeGraph = (nodes: EconNodeData[], edges: EconEdgeData[]): Grap
           node.computedValue = normalizeMonthlyValue(node.baseValue, node.timeUnit);
           break;
         case 'value':
-          node.computedValue = node.baseValue ?? 0;
+          if (incomingValues.length > 0) {
+            node.computedValue = sumValues(incomingValues);
+          } else {
+            node.computedValue = node.baseValue ?? 0;
+          }
           break;
         case 'add':
           {
