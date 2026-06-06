@@ -305,6 +305,28 @@ body {
   border-color: var(--button-bg);
 }
 
+.react-grid-item > .react-resizable-handle.react-resizable-handle-w {
+  top: 42px;
+  bottom: 0;
+  left: 0;
+  width: 12px;
+  height: auto;
+  margin-top: 0;
+  transform: none;
+  cursor: ew-resize;
+}
+
+.react-grid-item > .react-resizable-handle.react-resizable-handle-w::after {
+  top: 50%;
+  bottom: auto;
+  left: 3px;
+  width: 0;
+  height: 34px;
+  border-right: 2px solid var(--button-bg);
+  border-bottom: none;
+  transform: translateY(-50%);
+}
+
 .react-grid-item > .react-resizable-handle.react-resizable-handle-e {
   top: 42px;
   right: 0;

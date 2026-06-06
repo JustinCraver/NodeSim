@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import ReactGridLayout, {
-  noCompactor,
   useContainerWidth,
+  type Compactor,
   type Layout,
   type LayoutItem,
   type ResizeHandleAxis,
@@ -21,8 +21,45 @@ import './styles.css';
 const DEFAULT_NODE_SCALE = 2;
 const WORKSPACE_STORAGE_KEY = 'econgraph.workspace.v1';
 const WORKSPACE_GRID_COLS = 12;
+const WORKSPACE_MIN_ROWS = 30;
 const WORKSPACE_ROW_HEIGHT = 36;
-const WORKSPACE_RESIZE_HANDLES: ResizeHandleAxis[] = ['s', 'e', 'se'];
+const WORKSPACE_GRID_MARGIN: [number, number] = [12, 12];
+const WORKSPACE_GRID_PADDING: [number, number] = [12, 12];
+const WORKSPACE_RESIZE_HANDLES: ResizeHandleAxis[] = ['w', 's', 'e', 'se'];
+const doLayoutItemsOverlap = (first: LayoutItem, second: LayoutItem) =>
+  first.x < second.x + second.w &&
+  first.x + first.w > second.x &&
+  first.y < second.y + second.h &&
+  first.y + first.h > second.y;
+
+const workspaceCompactor: Compactor = {
+  type: 'vertical',
+  allowOverlap: false,
+  compact: (layout) => {
+    const nextLayout = layout.map((item) => ({ ...item }));
+    const orderedItems = [...nextLayout].sort((first, second) => {
+      if (first.moved !== second.moved) {
+        return first.moved ? -1 : 1;
+      }
+      if (first.y !== second.y) {
+        return first.y - second.y;
+      }
+      return first.x - second.x;
+    });
+    const placedItems: LayoutItem[] = [];
+
+    orderedItems.forEach((item) => {
+      let collision = placedItems.find((placed) => doLayoutItemsOverlap(placed, item));
+      while (collision) {
+        item.y = collision.y + collision.h;
+        collision = placedItems.find((placed) => doLayoutItemsOverlap(placed, item));
+      }
+      placedItems.push(item);
+    });
+
+    return nextLayout;
+  },
+};
 
 type GraphController = ReturnType<typeof createCytoscape>;
 type PanelType = 'graph' | 'hierarchy' | 'inspector';
@@ -848,6 +885,11 @@ export const App = () => {
   };
 
   const displayNodeScale = nodeScale / DEFAULT_NODE_SCALE;
+  const workspaceGridRows = Math.max(WORKSPACE_MIN_ROWS, getLayoutBottom(workspaceState.layout) + 6);
+  const workspaceGridHeight =
+    workspaceGridRows * WORKSPACE_ROW_HEIGHT +
+    Math.max(0, workspaceGridRows - 1) * WORKSPACE_GRID_MARGIN[1] +
+    WORKSPACE_GRID_PADDING[1] * 2;
 
   const renderPanelContent = (panel: PanelInstance) => {
     if (panel.type === 'graph') {
@@ -919,11 +961,13 @@ export const App = () => {
           <ReactGridLayout
             width={workspaceWidth}
             layout={workspaceState.layout}
+            autoSize={false}
+            style={{ height: workspaceGridHeight }}
             gridConfig={{
               cols: WORKSPACE_GRID_COLS,
               rowHeight: WORKSPACE_ROW_HEIGHT,
-              margin: [12, 12],
-              containerPadding: [12, 12],
+              margin: WORKSPACE_GRID_MARGIN,
+              containerPadding: WORKSPACE_GRID_PADDING,
             }}
             dragConfig={{
               enabled: true,
@@ -932,7 +976,7 @@ export const App = () => {
               bounded: true,
             }}
             resizeConfig={{ enabled: true, handles: WORKSPACE_RESIZE_HANDLES }}
-            compactor={noCompactor}
+            compactor={workspaceCompactor}
             onLayoutChange={handleWorkspaceLayoutChange}
             onResize={scheduleGraphResize}
             onResizeStop={scheduleGraphResize}
