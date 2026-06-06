@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CustomNodeConfig, EconEdgeData, EconNodeData, GraphData } from './models/types';
 import { createCytoscape } from './graph/createCytoscape';
 import { computeGraph } from './engine/computeGraph';
+import { HierarchyPanel } from './ui/HierarchyPanel';
 import { InspectorPanel } from './ui/InspectorPanel';
 import { Toolbar } from './ui/Toolbar';
 import demoGraph from './demo/houseFund.json';
@@ -234,6 +235,22 @@ const syncCustomInputNodes = (custom: CustomNodeConfig, inputTotals: Map<string,
   };
 };
 
+const mergeActiveCustomGraph = (parentGraph: GraphData, customNodeId: string, internalGraph: GraphData): GraphData => ({
+  ...parentGraph,
+  nodes: parentGraph.nodes.map((node) => {
+    if (node.id !== customNodeId || !node.custom) {
+      return node;
+    }
+    return {
+      ...node,
+      custom: {
+        ...node.custom,
+        internalGraph,
+      },
+    };
+  }),
+});
+
 export const App = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<GraphController | null>(null);
@@ -242,18 +259,55 @@ export const App = () => {
   const [nodeScale, setNodeScale] = useState((demoGraph as GraphData).nodeScale ?? DEFAULT_NODE_SCALE);
   const [customView, setCustomView] = useState<CustomViewState | null>(null);
   const customViewRef = useRef<CustomViewState | null>(null);
+  const [graphSnapshot, setGraphSnapshot] = useState<GraphData>(demoGraph as GraphData);
   const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
 
-  const handleOpenCustomNode = (node: EconNodeData) => {
-    if (customViewRef.current) {
-      return;
-    }
-    if (node.kind !== 'custom' || !node.custom) {
-      return;
-    }
+  const refreshGraphSnapshot = () => {
     const controller = controllerRef.current;
     if (!controller) {
       return;
+    }
+    const currentGraph = controller.exportGraph();
+    const viewState = customViewRef.current;
+    setGraphSnapshot(
+      viewState ? mergeActiveCustomGraph(viewState.parentGraph, viewState.customNodeId, currentGraph) : currentGraph,
+    );
+  };
+
+  const focusNode = (nodeId: string) => {
+    const controller = controllerRef.current;
+    if (!controller) {
+      return false;
+    }
+    const node = controller.cy.getElementById(nodeId);
+    if (!node || node.empty()) {
+      return false;
+    }
+    controller.cy.edges(':selected').unselect();
+    controller.cy.nodes(':selected').not(node).unselect();
+    node.select();
+    controller.cy.animate(
+      {
+        center: { eles: node },
+        zoom: Math.max(controller.cy.zoom(), 0.75),
+      },
+      {
+        duration: 220,
+      },
+    );
+    return true;
+  };
+
+  const openCustomNode = (node: EconNodeData) => {
+    if (customViewRef.current) {
+      return false;
+    }
+    if (node.kind !== 'custom' || !node.custom) {
+      return false;
+    }
+    const controller = controllerRef.current;
+    if (!controller) {
+      return false;
     }
     const ensuredCustom = ensureCustomPorts(node.custom);
     const parentGraph = controller.exportGraph();
@@ -272,8 +326,14 @@ export const App = () => {
     customViewRef.current = viewState;
     setCustomView(viewState);
     controller.importGraph(syncedCustom.internalGraph);
+    setGraphSnapshot(mergeActiveCustomGraph(updatedParent, node.id, syncedCustom.internalGraph));
     setSelectedNode(null);
     setSelectedEdge(null);
+    return true;
+  };
+
+  const handleOpenCustomNode = (node: EconNodeData) => {
+    openCustomNode(node);
   };
 
   useEffect(() => {
@@ -285,6 +345,7 @@ export const App = () => {
         setSelectedNode(node);
         if (node) {
           setSelectedEdge(null);
+          window.requestAnimationFrame(refreshGraphSnapshot);
         }
       },
       onSelectEdge: (edge) => {
@@ -324,6 +385,7 @@ export const App = () => {
     if (updated) {
       setSelectedNode({ ...updated });
     }
+    refreshGraphSnapshot();
   };
 
   const handleNodeDelete = (nodeId: string) => {
@@ -335,6 +397,7 @@ export const App = () => {
     setSelectedNode(null);
     setSelectedEdge(null);
     controller.deleteNode(nodeId);
+    window.requestAnimationFrame(refreshGraphSnapshot);
   };
 
   const handleEdgeDelete = (edgeId: string) => {
@@ -344,6 +407,7 @@ export const App = () => {
     }
     setSelectedEdge(null);
     controller.deleteEdge(edgeId);
+    window.requestAnimationFrame(refreshGraphSnapshot);
   };
 
   const handleExitCustomView = () => {
@@ -372,6 +436,8 @@ export const App = () => {
     setSelectedEdge(null);
     customViewRef.current = null;
     setCustomView(null);
+    setGraphSnapshot(updatedParent);
+    window.requestAnimationFrame(() => focusNode(viewState.customNodeId));
   };
 
   const handleEdgeChange = (edgeId: string, data: Partial<EconEdgeData>) => {
@@ -384,6 +450,7 @@ export const App = () => {
     if (updated) {
       setSelectedEdge({ ...updated });
     }
+    refreshGraphSnapshot();
   };
 
   const getNodeById = (nodeId: string) => {
@@ -398,16 +465,60 @@ export const App = () => {
   const handleExport = () => controllerRef.current?.exportGraph() ?? (demoGraph as GraphData);
 
   const handleImport = (data: GraphData) => {
+    customViewRef.current = null;
+    setCustomView(null);
+    setSelectedNode(null);
+    setSelectedEdge(null);
     if (data.nodeScale !== undefined) {
       setNodeScale(data.nodeScale);
     }
     controllerRef.current?.importGraph(data);
+    setGraphSnapshot(data);
+  };
+
+  const handleHierarchySelectNode = (nodeId: string) => {
+    const viewState = customViewRef.current;
+    if (viewState) {
+      handleExitCustomView();
+      window.requestAnimationFrame(() => focusNode(nodeId));
+      return;
+    }
+    focusNode(nodeId);
+  };
+
+  const handleHierarchySelectInternalNode = (customNodeId: string, nodeId: string) => {
+    const viewState = customViewRef.current;
+    if (viewState?.customNodeId === customNodeId) {
+      focusNode(nodeId);
+      return;
+    }
+    if (viewState) {
+      handleExitCustomView();
+    }
+    window.requestAnimationFrame(() => {
+      const controller = controllerRef.current;
+      if (!controller) {
+        return;
+      }
+      const customNodeData = controller.cy.getElementById(customNodeId)?.data() as EconNodeData | undefined;
+      if (!customNodeData || !openCustomNode({ ...customNodeData })) {
+        return;
+      }
+      window.requestAnimationFrame(() => focusNode(nodeId));
+    });
   };
 
   const displayNodeScale = nodeScale / DEFAULT_NODE_SCALE;
 
   return (
     <div className="app">
+      <HierarchyPanel
+        graph={graphSnapshot}
+        selectedNodeId={selectedNode?.id}
+        activeCustomNodeId={customView?.customNodeId}
+        onSelectNode={handleHierarchySelectNode}
+        onSelectInternalNode={handleHierarchySelectInternalNode}
+      />
       <div className="canvas-wrapper">
         <Toolbar
           onExport={handleExport}
