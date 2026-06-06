@@ -150,19 +150,230 @@ body {
 
 .app {
   display: flex;
+  flex-direction: column;
   height: 100vh;
   min-width: 0;
   overflow: hidden;
 }
 
+.workspace-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--toolbar-bg);
+}
+
+.workspace-actions button {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--button-bg);
+  color: var(--button-text);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.workspace-actions button:hover {
+  background: var(--button-hover);
+}
+
+.workspace-actions .workspace-action-secondary {
+  border: 1px solid var(--button-secondary-border);
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+}
+
+.workspace-actions .workspace-action-secondary:hover {
+  background: var(--button-secondary-hover);
+}
+
+.workspace-grid-host {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--bg);
+}
+
+.workspace-panel {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+  color: var(--text);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.workspace-panel-header {
+  flex: 0 0 auto;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--toolbar-bg);
+  cursor: grab;
+  user-select: none;
+}
+
+.react-grid-item.react-draggable-dragging .workspace-panel-header {
+  cursor: grabbing;
+}
+
+.react-grid-item.react-draggable-dragging .workspace-panel,
+.react-grid-item.resizing .workspace-panel {
+  border-color: var(--button-bg);
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.2);
+}
+
+.workspace-panel-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-panel-title h2 {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.workspace-panel-grip {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: -1px;
+  opacity: 0.85;
+}
+
+.workspace-panel-close {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--button-secondary-border);
+  border-radius: 6px;
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+  cursor: pointer;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.workspace-panel-close:hover {
+  background: var(--button-secondary-hover);
+}
+
+.workspace-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.workspace-panel-body-graph {
+  display: flex;
+  overflow: hidden;
+}
+
+.react-grid-item > .react-resizable-handle {
+  opacity: 0.65;
+  z-index: 4;
+}
+
+.react-grid-item:hover > .react-resizable-handle,
+.react-grid-item.resizing > .react-resizable-handle {
+  opacity: 1;
+}
+
+.react-grid-item > .react-resizable-handle::after {
+  border-color: var(--button-bg);
+}
+
+.react-grid-item > .react-resizable-handle.react-resizable-handle-e {
+  top: 42px;
+  right: 0;
+  bottom: 0;
+  width: 12px;
+  height: auto;
+  margin-top: 0;
+  transform: none;
+  cursor: ew-resize;
+}
+
+.react-grid-item > .react-resizable-handle.react-resizable-handle-e::after {
+  top: 50%;
+  right: 3px;
+  bottom: auto;
+  width: 0;
+  height: 34px;
+  border-right: 2px solid var(--button-bg);
+  border-bottom: none;
+  transform: translateY(-50%);
+}
+
+.react-grid-item > .react-resizable-handle.react-resizable-handle-s {
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: auto;
+  height: 12px;
+  margin-left: 0;
+  transform: none;
+  cursor: ns-resize;
+}
+
+.react-grid-item > .react-resizable-handle.react-resizable-handle-s::after {
+  right: auto;
+  bottom: 3px;
+  left: 50%;
+  width: 34px;
+  height: 0;
+  border-right: none;
+  border-bottom: 2px solid var(--button-bg);
+  transform: translateX(-50%);
+}
+
+.react-grid-item > .react-resizable-handle.react-resizable-handle-se {
+  right: 0;
+  bottom: 0;
+  width: 26px;
+  height: 26px;
+  cursor: se-resize;
+}
+
+.react-grid-item > .react-resizable-handle.react-resizable-handle-se::after {
+  right: 5px;
+  bottom: 5px;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid var(--button-bg);
+  border-bottom: 2px solid var(--button-bg);
+}
+
 .hierarchy-panel {
-  width: 280px;
-  min-width: 220px;
-  max-width: 320px;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: 100%;
   padding: 18px 12px;
   background: var(--panel-bg);
   color: var(--text);
-  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -321,20 +532,24 @@ body {
 .canvas-wrapper {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--border);
 }
 
 .canvas {
   flex: 1;
+  min-height: 0;
   position: relative;
   background: var(--canvas-bg);
 }
 
 .panel {
-  width: 480px;
-  min-width: 360px;
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
   padding: 24px;
   background: var(--panel-bg);
   color: var(--text);
@@ -477,41 +692,16 @@ body {
   margin: 4px 0;
 }
 
-@media (max-width: 1080px) {
-  .hierarchy-panel {
-    width: 220px;
-    min-width: 180px;
-  }
-
-  .panel {
-    width: 360px;
-    min-width: 320px;
-  }
-}
-
 @media (max-width: 820px) {
-  .app {
-    display: grid;
-    grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto;
+  .workspace-actions {
+    flex-wrap: wrap;
   }
 
-  .hierarchy-panel {
-    width: auto;
-    min-width: 0;
-    max-width: none;
+  .toolbar {
+    gap: 8px;
   }
 
-  .canvas-wrapper {
-    border-right: none;
-  }
-
-  .panel {
-    grid-column: 1 / -1;
-    width: auto;
-    min-width: 0;
-    max-height: 34vh;
-    overflow: auto;
-    border-top: 1px solid var(--border);
+  .toolbar-scale {
+    width: 100%;
   }
 }
