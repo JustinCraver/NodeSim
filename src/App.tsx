@@ -7,6 +7,8 @@ import { Toolbar } from './ui/Toolbar';
 import demoGraph from './demo/houseFund.json';
 import './styles.css';
 
+const DEFAULT_NODE_SCALE = 2;
+
 type GraphController = ReturnType<typeof createCytoscape>;
 type CustomViewState = {
   parentGraph: GraphData;
@@ -237,7 +239,7 @@ export const App = () => {
   const controllerRef = useRef<GraphController | null>(null);
   const [selectedNode, setSelectedNode] = useState<EconNodeData | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<EconEdgeData | null>(null);
-  const [nodeScale, setNodeScale] = useState(1);
+  const [nodeScale, setNodeScale] = useState((demoGraph as GraphData).nodeScale ?? DEFAULT_NODE_SCALE);
   const [customView, setCustomView] = useState<CustomViewState | null>(null);
   const customViewRef = useRef<CustomViewState | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
@@ -402,14 +404,16 @@ export const App = () => {
     controllerRef.current?.importGraph(data);
   };
 
+  const displayNodeScale = nodeScale / DEFAULT_NODE_SCALE;
+
   return (
     <div className="app">
       <div className="canvas-wrapper">
         <Toolbar
           onExport={handleExport}
           onImport={handleImport}
-          nodeScale={nodeScale}
-          onNodeScaleChange={setNodeScale}
+          nodeScale={displayNodeScale}
+          onNodeScaleChange={(value) => setNodeScale(value * DEFAULT_NODE_SCALE)}
           isCustomView={Boolean(customView)}
           onExitCustomView={customView ? handleExitCustomView : undefined}
           theme={theme}

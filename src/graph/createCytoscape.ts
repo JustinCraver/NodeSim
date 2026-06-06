@@ -48,6 +48,7 @@ const TEXT_MIN_WIDTH = 240;
 const TEXT_MAX_WIDTH = 820;
 const TEXT_HORIZONTAL_PADDING = 32;
 const TEXT_VERTICAL_PADDING = 26;
+const DEFAULT_NODE_SCALE = 2;
 
 const scaleValue = (value: number, scale: number) => Math.round(value * scale);
 
@@ -754,7 +755,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
         },
   });
 
-  let nodeScale = 1;
+  let nodeScale = Math.max(0.1, graphData.nodeScale ?? DEFAULT_NODE_SCALE);
 
   const applyNodeScale = (scale: number) => {
     const width = scaleValue(BASE_NODE_WIDTH, scale);
@@ -799,6 +800,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     recompute(cy, nodeScale, themePalette);
   };
 
+  applyNodeScale(nodeScale);
   recompute(cy, nodeScale, themePalette);
 
   const updateFocusDimming = () => {
