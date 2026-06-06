@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
-import ReactGridLayout, { noCompactor, useContainerWidth, type Layout, type LayoutItem } from 'react-grid-layout';
+import ReactGridLayout, {
+  noCompactor,
+  useContainerWidth,
+  type Layout,
+  type LayoutItem,
+  type ResizeHandleAxis,
+} from 'react-grid-layout';
 import type { CustomNodeConfig, EconEdgeData, EconNodeData, GraphData } from './models/types';
 import { createCytoscape } from './graph/createCytoscape';
 import { computeGraph } from './engine/computeGraph';
@@ -16,6 +22,7 @@ const DEFAULT_NODE_SCALE = 2;
 const WORKSPACE_STORAGE_KEY = 'econgraph.workspace.v1';
 const WORKSPACE_GRID_COLS = 12;
 const WORKSPACE_ROW_HEIGHT = 36;
+const WORKSPACE_RESIZE_HANDLES: ResizeHandleAxis[] = ['s', 'e', 'se'];
 
 type GraphController = ReturnType<typeof createCytoscape>;
 type PanelType = 'graph' | 'hierarchy' | 'inspector';
@@ -42,14 +49,55 @@ const PANEL_TYPE_LABELS: Record<PanelType, string> = {
 const isPanelType = (value: unknown): value is PanelType =>
   value === 'graph' || value === 'hierarchy' || value === 'inspector';
 
+const clampGridNumber = (value: unknown, min: number, max: number, fallback: number) => {
+  const numberValue = typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : fallback;
+  return Math.min(Math.max(numberValue, min), max);
+};
+
 const getDefaultLayoutItem = (panel: PanelInstance, index: number, y = 0): LayoutItem => {
   if (panel.type === 'graph') {
-    return { i: panel.id, x: 3, y, w: 6, h: 15, minW: 4, minH: 8, resizeHandles: ['s', 'e', 'se'] };
+    return {
+      i: panel.id,
+      x: 3,
+      y,
+      w: 6,
+      h: 15,
+      minW: 4,
+      minH: 8,
+      static: false,
+      isDraggable: true,
+      isResizable: true,
+      resizeHandles: [...WORKSPACE_RESIZE_HANDLES],
+    };
   }
   if (panel.type === 'hierarchy') {
-    return { i: panel.id, x: 0, y, w: 3, h: 15, minW: 2, minH: 7, resizeHandles: ['s', 'e', 'se'] };
+    return {
+      i: panel.id,
+      x: 0,
+      y,
+      w: 3,
+      h: 15,
+      minW: 2,
+      minH: 7,
+      static: false,
+      isDraggable: true,
+      isResizable: true,
+      resizeHandles: [...WORKSPACE_RESIZE_HANDLES],
+    };
   }
-  return { i: panel.id, x: index === 2 ? 9 : 6, y, w: 3, h: 15, minW: 3, minH: 8, resizeHandles: ['s', 'e', 'se'] };
+  return {
+    i: panel.id,
+    x: index === 2 ? 9 : 6,
+    y,
+    w: 3,
+    h: 15,
+    minW: 3,
+    minH: 8,
+    static: false,
+    isDraggable: true,
+    isResizable: true,
+    resizeHandles: [...WORKSPACE_RESIZE_HANDLES],
+  };
 };
 
 const getDefaultWorkspaceState = (): WorkspaceState => {
@@ -68,10 +116,45 @@ const getDefaultWorkspaceState = (): WorkspaceState => {
 const getLayoutBottom = (layout: readonly LayoutItem[]) =>
   layout.reduce((bottom, item) => Math.max(bottom, item.y + item.h), 0);
 
-const cloneLayoutItem = (item: LayoutItem): LayoutItem => ({
-  ...item,
-  resizeHandles: item.resizeHandles ? [...item.resizeHandles] : ['s', 'e', 'se'],
-});
+const sanitizeLayoutItem = (item: LayoutItem | undefined, fallback: LayoutItem): LayoutItem => {
+  const minW = fallback.minW ?? 1;
+  const minH = fallback.minH ?? 1;
+  const maxW = fallback.maxW ?? WORKSPACE_GRID_COLS;
+  const maxH = fallback.maxH ?? 100;
+  const w = clampGridNumber(item?.w, minW, Math.min(maxW, WORKSPACE_GRID_COLS), fallback.w);
+  const h = clampGridNumber(item?.h, minH, maxH, fallback.h);
+  const x = clampGridNumber(item?.x, 0, Math.max(0, WORKSPACE_GRID_COLS - w), fallback.x);
+  const y = clampGridNumber(item?.y, 0, 1000, fallback.y);
+
+  return {
+    ...fallback,
+    i: fallback.i,
+    x,
+    y,
+    w,
+    h,
+    minW,
+    minH,
+    maxW: fallback.maxW,
+    maxH: fallback.maxH,
+    static: false,
+    isDraggable: true,
+    isResizable: true,
+    isBounded: true,
+    resizeHandles: [...WORKSPACE_RESIZE_HANDLES],
+  };
+};
+
+const cloneLayoutItem = (item: LayoutItem): LayoutItem =>
+  sanitizeLayoutItem(item, {
+    i: item.i,
+    x: 0,
+    y: 0,
+    w: Math.max(1, Math.min(item.w, WORKSPACE_GRID_COLS)),
+    h: Math.max(1, item.h),
+    minW: item.minW ?? 1,
+    minH: item.minH ?? 1,
+  });
 
 const isLayoutItem = (value: unknown): value is LayoutItem => {
   if (!value || typeof value !== 'object') {
@@ -145,13 +228,14 @@ const repairWorkspaceState = (state: Partial<WorkspaceState>): WorkspaceState =>
   const layoutById = new Map(
     rawLayout
       .filter((item): item is LayoutItem => isLayoutItem(item) && panelIds.has(item.i))
-      .map((item) => [item.i, cloneLayoutItem(item)]),
+      .map((item) => [item.i, item]),
   );
   const repairedLayout: LayoutItem[] = [];
 
   panels.forEach((panel, index) => {
     const storedItem = layoutById.get(panel.id);
-    repairedLayout.push(storedItem ?? getDefaultLayoutItem(panel, index, getLayoutBottom(repairedLayout)));
+    const fallbackItem = getDefaultLayoutItem(panel, index, getLayoutBottom(repairedLayout));
+    repairedLayout.push(sanitizeLayoutItem(storedItem, fallbackItem));
   });
 
   return { panels, layout: repairedLayout };
@@ -842,11 +926,12 @@ export const App = () => {
               containerPadding: [12, 12],
             }}
             dragConfig={{
+              enabled: true,
               handle: '.workspace-panel-header',
               cancel: 'button,input,select,textarea,label,a,.canvas,.react-resizable-handle',
               bounded: true,
             }}
-            resizeConfig={{ handles: ['s', 'e', 'se'] }}
+            resizeConfig={{ enabled: true, handles: WORKSPACE_RESIZE_HANDLES }}
             compactor={noCompactor}
             onLayoutChange={handleWorkspaceLayoutChange}
             onResize={scheduleGraphResize}
