@@ -185,9 +185,10 @@ export const InspectorPanel = ({
     onChange(activeNode.id, { [field]: Number.isNaN(value) ? undefined : value } as Partial<EconNodeData>);
   };
 
-  const handleTextChange = (field: keyof EconNodeData) => (event: React.ChangeEvent<HTMLInputElement>) => {
-    onChange(activeNode.id, { [field]: event.target.value } as Partial<EconNodeData>);
-  };
+  const handleTextChange =
+    (field: keyof EconNodeData) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      onChange(activeNode.id, { [field]: event.target.value } as Partial<EconNodeData>);
+    };
 
   const handleTimeUnitChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     onChange(activeNode.id, { timeUnit: event.target.value as TimeUnit });

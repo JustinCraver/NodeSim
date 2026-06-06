@@ -1,4 +1,4 @@
-import cytoscape, { type Core, type NodeSingular } from 'cytoscape';
+import cytoscape, { type Core, type NodeSingular, type StylesheetJson } from 'cytoscape';
 import type { EconEdgeData, EconNodeData, GraphComputeResult, GraphData, NodeKind } from '../models/types';
 import { computeGraph } from '../engine/computeGraph';
 
@@ -362,6 +362,43 @@ const countWrappedLines = (line: string, maxWidth: number) => {
   return lines;
 };
 
+const splitLongToken = (token: string, maxWidth: number) => {
+  if (getTextWidth(token) <= maxWidth) {
+    return [token];
+  }
+
+  const chunks: string[] = [];
+  let current = '';
+
+  Array.from(token).forEach((char) => {
+    const candidate = `${current}${char}`;
+    if (current && getTextWidth(candidate) > maxWidth) {
+      chunks.push(current);
+      current = char;
+      return;
+    }
+    current = candidate;
+  });
+
+  if (current) {
+    chunks.push(current);
+  }
+
+  return chunks;
+};
+
+const breakLongTextTokens = (text: string, maxWidth: number) =>
+  text
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) =>
+      line
+        .split(/(\s+)/)
+        .map((token) => (/\s+/.test(token) ? token : splitLongToken(token, maxWidth).join('\n')))
+        .join(''),
+    )
+    .join('\n');
+
 const buildTextLayout = (text: string, scale: number) => {
   const normalized = text.replace(/\r\n/g, '\n');
   const lines = normalized.split('\n');
@@ -465,9 +502,13 @@ const applyComputeResults = (cy: Core, result: GraphComputeResult, scale: number
       const portOverlay = isMathKind(node.kind) ? buildPortOverlay(node, scale, palette) : undefined;
       const glowColor = getGlowColor(palette, node.kind);
       const textLayout = node.kind === 'text' ? buildTextLayout(node.label, scale) : undefined;
+      const displayLabel =
+        node.kind === 'text' && textLayout
+          ? breakLongTextTokens(node.label, textLayout.textMaxWidth / scale)
+          : formatNodeLabel(node, error);
       element.data({
         ...node,
-        displayLabel: formatNodeLabel(node, error),
+        displayLabel,
         portOverlay,
         glowColor,
         ...textLayout,
@@ -482,7 +523,8 @@ const recompute = (cy: Core, scale: number, palette: ThemePalette) => {
   applyComputeResults(cy, result, scale, palette);
 };
 
-const buildStyles = (palette: ThemePalette) => [
+const buildStyles = (palette: ThemePalette) =>
+  [
   {
     selector: 'node',
     style: {
@@ -686,7 +728,7 @@ const buildStyles = (palette: ThemePalette) => [
       'border-color': palette.kinds.divide.border,
     },
   },
-];
+  ] as unknown as StylesheetJson;
 
 export const createCytoscape = (container: HTMLDivElement, graphData: GraphData, callbacks: GraphCallbacks = {}) => {
   container.addEventListener('contextmenu', (event) => {
