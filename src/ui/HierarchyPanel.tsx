@@ -15,6 +15,8 @@ type HierarchyPanelProps = {
   graph: GraphData;
   selectedNodeId?: string;
   activeCustomNodeId?: string;
+  isFocusEnabled: boolean;
+  onToggleFocus: () => void;
   onSelectNode: (nodeId: string) => void;
   onSelectInternalNode: (customNodeId: string, nodeId: string) => void;
 };
@@ -52,6 +54,8 @@ export const HierarchyPanel = ({
   graph,
   selectedNodeId,
   activeCustomNodeId,
+  isFocusEnabled,
+  onToggleFocus,
   onSelectNode,
   onSelectInternalNode,
 }: HierarchyPanelProps) => {
@@ -142,7 +146,18 @@ export const HierarchyPanel = ({
   return (
     <aside className="hierarchy-panel" aria-label="Graph hierarchy">
       <div className="hierarchy-header">
-        <h2>Hierarchy</h2>
+        <div className="hierarchy-title-row">
+          <h2>Hierarchy</h2>
+          <button
+            type="button"
+            className="hierarchy-focus-toggle"
+            aria-pressed={isFocusEnabled}
+            title={isFocusEnabled ? 'Disable graph focusing' : 'Enable graph focusing'}
+            onClick={onToggleFocus}
+          >
+            Focus
+          </button>
+        </div>
         {activeCustomNodeId && <div className="hierarchy-active">Inside {activeCustomNodeId}</div>}
       </div>
       <div className="hierarchy-root">Main Graph</div>

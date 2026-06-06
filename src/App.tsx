@@ -260,6 +260,7 @@ export const App = () => {
   const [customView, setCustomView] = useState<CustomViewState | null>(null);
   const customViewRef = useRef<CustomViewState | null>(null);
   const [graphSnapshot, setGraphSnapshot] = useState<GraphData>(demoGraph as GraphData);
+  const [isHierarchyFocusEnabled, setIsHierarchyFocusEnabled] = useState(true);
   const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
 
   const refreshGraphSnapshot = () => {
@@ -274,7 +275,7 @@ export const App = () => {
     );
   };
 
-  const focusNode = (nodeId: string) => {
+  const selectNode = (nodeId: string) => {
     const controller = controllerRef.current;
     if (!controller) {
       return false;
@@ -286,6 +287,15 @@ export const App = () => {
     controller.cy.edges(':selected').unselect();
     controller.cy.nodes(':selected').not(node).unselect();
     node.select();
+    return true;
+  };
+
+  const focusNode = (nodeId: string) => {
+    const controller = controllerRef.current;
+    if (!controller || !selectNode(nodeId)) {
+      return false;
+    }
+    const node = controller.cy.getElementById(nodeId);
     controller.cy.animate(
       {
         center: { eles: node },
@@ -410,7 +420,7 @@ export const App = () => {
     window.requestAnimationFrame(refreshGraphSnapshot);
   };
 
-  const handleExitCustomView = () => {
+  const handleExitCustomView = (shouldFocusNode = true) => {
     const controller = controllerRef.current;
     const viewState = customViewRef.current;
     if (!controller || !viewState) {
@@ -437,7 +447,9 @@ export const App = () => {
     customViewRef.current = null;
     setCustomView(null);
     setGraphSnapshot(updatedParent);
-    window.requestAnimationFrame(() => focusNode(viewState.customNodeId));
+    if (shouldFocusNode) {
+      window.requestAnimationFrame(() => focusNode(viewState.customNodeId));
+    }
   };
 
   const handleEdgeChange = (edgeId: string, data: Partial<EconEdgeData>) => {
@@ -479,21 +491,35 @@ export const App = () => {
   const handleHierarchySelectNode = (nodeId: string) => {
     const viewState = customViewRef.current;
     if (viewState) {
-      handleExitCustomView();
-      window.requestAnimationFrame(() => focusNode(nodeId));
+      handleExitCustomView(isHierarchyFocusEnabled);
+      window.requestAnimationFrame(() => {
+        if (isHierarchyFocusEnabled) {
+          focusNode(nodeId);
+          return;
+        }
+        selectNode(nodeId);
+      });
       return;
     }
-    focusNode(nodeId);
+    if (isHierarchyFocusEnabled) {
+      focusNode(nodeId);
+      return;
+    }
+    selectNode(nodeId);
   };
 
   const handleHierarchySelectInternalNode = (customNodeId: string, nodeId: string) => {
     const viewState = customViewRef.current;
     if (viewState?.customNodeId === customNodeId) {
-      focusNode(nodeId);
+      if (isHierarchyFocusEnabled) {
+        focusNode(nodeId);
+        return;
+      }
+      selectNode(nodeId);
       return;
     }
     if (viewState) {
-      handleExitCustomView();
+      handleExitCustomView(isHierarchyFocusEnabled);
     }
     window.requestAnimationFrame(() => {
       const controller = controllerRef.current;
@@ -504,7 +530,13 @@ export const App = () => {
       if (!customNodeData || !openCustomNode({ ...customNodeData })) {
         return;
       }
-      window.requestAnimationFrame(() => focusNode(nodeId));
+      window.requestAnimationFrame(() => {
+        if (isHierarchyFocusEnabled) {
+          focusNode(nodeId);
+          return;
+        }
+        selectNode(nodeId);
+      });
     });
   };
 
@@ -516,6 +548,8 @@ export const App = () => {
         graph={graphSnapshot}
         selectedNodeId={selectedNode?.id}
         activeCustomNodeId={customView?.customNodeId}
+        isFocusEnabled={isHierarchyFocusEnabled}
+        onToggleFocus={() => setIsHierarchyFocusEnabled((prev) => !prev)}
         onSelectNode={handleHierarchySelectNode}
         onSelectInternalNode={handleHierarchySelectInternalNode}
       />

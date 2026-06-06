@@ -176,10 +176,39 @@ body {
   padding: 0 4px;
 }
 
+.hierarchy-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .hierarchy-header h2 {
   margin: 0;
   font-size: 21px;
   line-height: 1.2;
+}
+
+.hierarchy-focus-toggle {
+  padding: 5px 9px;
+  border: 1px solid var(--button-secondary-border);
+  border-radius: 6px;
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.hierarchy-focus-toggle:hover {
+  background: var(--button-secondary-hover);
+}
+
+.hierarchy-focus-toggle[aria-pressed='true'] {
+  background: var(--button-secondary-active-bg);
+  border-color: var(--button-secondary-active-border);
+  color: var(--button-secondary-active-text);
 }
 
 .hierarchy-active {
