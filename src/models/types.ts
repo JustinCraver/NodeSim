@@ -9,7 +9,8 @@ export type NodeKind =
   | 'calc'
   | 'asset'
   | 'output'
-  | 'custom';
+  | 'custom'
+  | 'text';
 export type TimeUnit = 'per_day' | 'per_week' | 'per_month' | 'per_year';
 
 export type PortDef = {
@@ -30,6 +31,9 @@ export interface EconNodeData {
   label: string;
   kind: NodeKind;
   position?: { x: number; y: number };
+  nodeWidth?: number;
+  nodeHeight?: number;
+  textMaxWidth?: number;
   baseValue?: number;
   timeUnit?: TimeUnit;
   formula?: string;
@@ -67,4 +71,5 @@ export interface GraphData {
 export interface GraphComputeResult {
   nodes: EconNodeData[];
   errors: Record<string, string>;
+  customOutputs?: Map<string, Map<string, number>>;
 }

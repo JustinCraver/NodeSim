@@ -15,17 +15,10 @@
       "timeUnit": "per_month"
     },
     {
-      "id": "coffee",
-      "label": "Coffee ($5/day)",
-      "kind": "expense",
-      "baseValue": 5,
-      "timeUnit": "per_day"
-    },
-    {
       "id": "monthlySavings",
       "label": "Monthly Savings",
       "kind": "calc",
-      "formula": "netIncome - fixedExpenses - coffee"
+      "formula": "netIncome - fixedExpenses"
     },
     {
       "id": "savingsAdjuster",
@@ -100,12 +93,6 @@
     {
       "id": "edge-fixed-savings",
       "source": "fixedExpenses",
-      "target": "monthlySavings",
-      "kind": "flow"
-    },
-    {
-      "id": "edge-coffee-savings",
-      "source": "coffee",
       "target": "monthlySavings",
       "kind": "flow"
     },

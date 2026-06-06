@@ -31,6 +31,10 @@ const NODE_KIND_GROUPS: { label: string; options: { value: NodeKind; label: stri
       { value: 'custom', label: 'Custom' },
     ],
   },
+  {
+    label: 'Text',
+    options: [{ value: 'text', label: 'Text' }],
+  },
 ];
 
 const BINARY_PORT_OPTIONS: PortDef[] = [
@@ -264,6 +268,8 @@ export const InspectorPanel = ({
         return { ...reset, interestRateAnnual: 0 };
       case 'output':
         return { ...reset, targetAmount: 0 };
+      case 'text':
+        return { ...reset };
       case 'custom':
         return { ...reset, custom: createDefaultCustomConfig() };
       default:
@@ -384,10 +390,22 @@ export const InspectorPanel = ({
   return (
     <div className="panel">
       <h2>Inspector</h2>
-      <label className="panel-section">
-        <span className="label">Label</span>
-        <input type="text" value={activeNode.label} onChange={handleTextChange('label')} />
-      </label>
+      {activeNode.kind === 'text' ? (
+        <label className="panel-section">
+          <span className="label">Text</span>
+          <textarea
+            rows={6}
+            value={activeNode.label}
+            onChange={handleTextChange('label')}
+            style={{ width: '100%', marginTop: '12px' }}
+          />
+        </label>
+      ) : (
+        <label className="panel-section">
+          <span className="label">Label</span>
+          <input type="text" value={activeNode.label} onChange={handleTextChange('label')} />
+        </label>
+      )}
       <label className="panel-section">
         <span className="label">Type</span>
         <select value={activeNode.kind} onChange={handleKindChange}>

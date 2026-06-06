@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CustomNodeConfig, EconEdgeData, EconNodeData, GraphData } from './models/types';
 import { createCytoscape } from './graph/createCytoscape';
+import { computeGraph } from './engine/computeGraph';
 import { InspectorPanel } from './ui/InspectorPanel';
 import { Toolbar } from './ui/Toolbar';
-import demoGraph from './demo/coffeeToHouse.json';
+import demoGraph from './demo/houseFund.json';
 import './styles.css';
-
-const COFFEE_NODE_ID = 'coffee';
-const COFFEE_DEFAULT_VALUE = 5;
 
 type GraphController = ReturnType<typeof createCytoscape>;
 type CustomViewState = {
@@ -29,32 +27,99 @@ const getInitialTheme = (): 'light' | 'dark' => {
   return 'light';
 };
 
-const ensureCustomInputs = (custom: CustomNodeConfig) => {
+const getDefaultPortId = (ports: { id: string }[] | undefined) => ports?.[0]?.id;
+
+const ensureCustomPorts = (custom: CustomNodeConfig) => {
   const internalGraph = {
     nodes: custom.internalGraph.nodes.map((node) => ({ ...node })),
     edges: custom.internalGraph.edges.map((edge) => ({ ...edge })),
+    nodeScale: custom.internalGraph.nodeScale,
   };
   const inputBindings = { ...custom.inputBindings };
+  const outputBindings = { ...custom.outputBindings };
   const nodeIds = new Set(internalGraph.nodes.map((node) => node.id));
+  const nodeMap = new Map(internalGraph.nodes.map((node) => [node.id, node]));
   let changed = false;
 
+  const createValueNode = (id: string, label: string) => {
+    const node = {
+      id,
+      label,
+      kind: 'value' as const,
+      baseValue: 0,
+    };
+    internalGraph.nodes.push(node);
+    nodeIds.add(id);
+    nodeMap.set(id, node);
+    changed = true;
+  };
+
+  const getAvailableId = (baseId: string) => {
+    let candidate = baseId;
+    let index = 1;
+    while (nodeIds.has(candidate)) {
+      candidate = `${baseId}-${index}`;
+      index += 1;
+    }
+    return candidate;
+  };
+
   custom.inputs.forEach((port, index) => {
-    let boundId = inputBindings[port.id];
-    if (!boundId) {
-      boundId = `input-${port.id}`;
+    const label = port.label || `Input ${index + 1}`;
+    const boundId = inputBindings[port.id];
+    const boundNode = boundId ? nodeMap.get(boundId) : undefined;
+    const boundValid = boundNode && (boundNode.kind === 'income' || boundNode.kind === 'value');
+
+    if (boundValid) {
+      return;
+    }
+
+    if (boundId && !boundNode) {
+      createValueNode(boundId, label);
       inputBindings[port.id] = boundId;
-      changed = true;
+      return;
     }
-    if (!nodeIds.has(boundId)) {
-      internalGraph.nodes.push({
-        id: boundId,
-        label: port.label || `Input ${index + 1}`,
-        kind: 'value',
-        baseValue: 0,
-      });
-      nodeIds.add(boundId);
-      changed = true;
+
+    const defaultId = `input-${port.id}`;
+    if (defaultId !== boundId && nodeMap.has(defaultId)) {
+      const defaultNode = nodeMap.get(defaultId);
+      if (defaultNode && (defaultNode.kind === 'income' || defaultNode.kind === 'value')) {
+        inputBindings[port.id] = defaultId;
+        changed = true;
+        return;
+      }
     }
+
+    const nextId = getAvailableId(defaultId);
+    createValueNode(nextId, label);
+    inputBindings[port.id] = nextId;
+  });
+
+  custom.outputs.forEach((port, index) => {
+    const label = port.label || `Output ${index + 1}`;
+    const boundId = outputBindings[port.id];
+    const boundNode = boundId ? nodeMap.get(boundId) : undefined;
+
+    if (boundNode) {
+      return;
+    }
+
+    if (boundId && !boundNode) {
+      createValueNode(boundId, label);
+      outputBindings[port.id] = boundId;
+      return;
+    }
+
+    const defaultId = `output-${port.id}`;
+    if (defaultId !== boundId && nodeMap.has(defaultId)) {
+      outputBindings[port.id] = defaultId;
+      changed = true;
+      return;
+    }
+
+    const nextId = getAvailableId(defaultId);
+    createValueNode(nextId, label);
+    outputBindings[port.id] = nextId;
   });
 
   if (!changed) {
@@ -65,6 +130,105 @@ const ensureCustomInputs = (custom: CustomNodeConfig) => {
     ...custom,
     internalGraph,
     inputBindings,
+    outputBindings,
+  };
+};
+
+const computeCustomInputTotals = (graph: GraphData, customNodeId: string) => {
+  const result = computeGraph(graph.nodes, graph.edges);
+  const nodeMap = new Map(result.nodes.map((node) => [node.id, node]));
+  const customOutputs = result.customOutputs ?? new Map<string, Map<string, number>>();
+  const targetNode = nodeMap.get(customNodeId);
+  const targetCustom = targetNode?.custom;
+
+  if (!targetCustom) {
+    return new Map<string, number>();
+  }
+
+  const inputPortIds = new Set(targetCustom.inputs.map((port) => port.id));
+  const defaultInputPortId = getDefaultPortId(targetCustom.inputs);
+  const totals = new Map<string, number>();
+
+  const getEdgeValue = (edge: EconEdgeData) => {
+    const sourceNode = nodeMap.get(edge.source);
+    if (!sourceNode) {
+      return 0;
+    }
+    if (sourceNode.kind !== 'custom') {
+      return sourceNode.computedValue ?? 0;
+    }
+    const portId = edge.sourcePort ?? getDefaultPortId(sourceNode.custom?.outputs);
+    if (!portId) {
+      return 0;
+    }
+    const outputs = customOutputs.get(sourceNode.id);
+    if (outputs?.has(portId)) {
+      return outputs.get(portId) ?? 0;
+    }
+    return sourceNode.computedValue ?? 0;
+  };
+
+  graph.edges.forEach((edge) => {
+    if (edge.target !== customNodeId) {
+      return;
+    }
+    const portId = edge.targetPort ?? defaultInputPortId;
+    if (!portId || !inputPortIds.has(portId)) {
+      return;
+    }
+    const value = getEdgeValue(edge);
+    totals.set(portId, (totals.get(portId) ?? 0) + value);
+  });
+
+  return totals;
+};
+
+const syncCustomInputNodes = (custom: CustomNodeConfig, inputTotals: Map<string, number>) => {
+  const boundValues = new Map<string, number>();
+
+  custom.inputs.forEach((port) => {
+    const boundId = custom.inputBindings[port.id];
+    if (!boundId) {
+      return;
+    }
+    boundValues.set(boundId, inputTotals.get(port.id) ?? 0);
+  });
+
+  if (boundValues.size === 0) {
+    return custom;
+  }
+
+  let changed = false;
+  const nextNodes = custom.internalGraph.nodes.map((node) => {
+    const nextValue = boundValues.get(node.id);
+    if (nextValue === undefined) {
+      return node;
+    }
+    if (node.kind !== 'income' && node.kind !== 'value') {
+      return node;
+    }
+    const nextNode = { ...node };
+    if (node.baseValue !== nextValue) {
+      nextNode.baseValue = nextValue;
+      changed = true;
+    }
+    if (node.kind === 'income' && node.timeUnit !== 'per_month') {
+      nextNode.timeUnit = 'per_month';
+      changed = true;
+    }
+    return nextNode;
+  });
+
+  if (!changed) {
+    return custom;
+  }
+
+  return {
+    ...custom,
+    internalGraph: {
+      ...custom.internalGraph,
+      nodes: nextNodes,
+    },
   };
 };
 
@@ -73,7 +237,6 @@ export const App = () => {
   const controllerRef = useRef<GraphController | null>(null);
   const [selectedNode, setSelectedNode] = useState<EconNodeData | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<EconEdgeData | null>(null);
-  const [disableCoffee, setDisableCoffee] = useState(false);
   const [nodeScale, setNodeScale] = useState(1);
   const [customView, setCustomView] = useState<CustomViewState | null>(null);
   const customViewRef = useRef<CustomViewState | null>(null);
@@ -90,7 +253,7 @@ export const App = () => {
     if (!controller) {
       return;
     }
-    const ensuredCustom = ensureCustomInputs(node.custom);
+    const ensuredCustom = ensureCustomPorts(node.custom);
     const parentGraph = controller.exportGraph();
     const updatedParent: GraphData =
       ensuredCustom === node.custom
@@ -101,10 +264,12 @@ export const App = () => {
               item.id === node.id ? { ...item, custom: ensuredCustom } : item,
             ),
           };
+    const inputTotals = computeCustomInputTotals(updatedParent, node.id);
+    const syncedCustom = syncCustomInputNodes(ensuredCustom, inputTotals);
     const viewState = { parentGraph: updatedParent, customNodeId: node.id };
     customViewRef.current = viewState;
     setCustomView(viewState);
-    controller.importGraph(ensuredCustom.internalGraph);
+    controller.importGraph(syncedCustom.internalGraph);
     setSelectedNode(null);
     setSelectedEdge(null);
   };
@@ -151,7 +316,8 @@ export const App = () => {
     if (!controller) {
       return;
     }
-    controller.updateNodeData(nodeId, data);
+    const nextData = data.custom ? { ...data, custom: ensureCustomPorts(data.custom) } : data;
+    controller.updateNodeData(nodeId, nextData);
     const updated = controller.cy.getElementById(nodeId)?.data() as EconNodeData | undefined;
     if (updated) {
       setSelectedNode({ ...updated });
@@ -191,12 +357,10 @@ export const App = () => {
         if (node.id !== viewState.customNodeId || !node.custom) {
           return node;
         }
+        const syncedCustom = ensureCustomPorts({ ...node.custom, internalGraph });
         return {
           ...node,
-          custom: {
-            ...node.custom,
-            internalGraph,
-          },
+          custom: syncedCustom,
         };
       }),
     };
@@ -238,25 +402,12 @@ export const App = () => {
     controllerRef.current?.importGraph(data);
   };
 
-  const handleToggleCoffee = (value: boolean) => {
-    setDisableCoffee(value);
-    const controller = controllerRef.current;
-    if (!controller) {
-      return;
-    }
-    controller.updateNodeData(COFFEE_NODE_ID, {
-      baseValue: value ? 0 : COFFEE_DEFAULT_VALUE,
-    });
-  };
-
   return (
     <div className="app">
       <div className="canvas-wrapper">
         <Toolbar
           onExport={handleExport}
           onImport={handleImport}
-          disableCoffee={disableCoffee}
-          onToggleCoffee={handleToggleCoffee}
           nodeScale={nodeScale}
           onNodeScaleChange={setNodeScale}
           isCustomView={Boolean(customView)}

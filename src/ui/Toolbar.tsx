@@ -5,8 +5,6 @@ import type { GraphData } from '../models/types';
 type ToolbarProps = {
   onExport: () => GraphData;
   onImport: (data: GraphData) => void;
-  disableCoffee: boolean;
-  onToggleCoffee: (value: boolean) => void;
   nodeScale: number;
   onNodeScaleChange: (value: number) => void;
   isCustomView?: boolean;
@@ -18,8 +16,6 @@ type ToolbarProps = {
 export const Toolbar = ({
   onExport,
   onImport,
-  disableCoffee,
-  onToggleCoffee,
   nodeScale,
   onNodeScaleChange,
   isCustomView,
@@ -75,10 +71,6 @@ export const Toolbar = ({
       <button type="button" onClick={handleImportClick}>
         Import JSON
       </button>
-      <label className="toolbar-checkbox">
-        <input type="checkbox" checked={disableCoffee} onChange={(event) => onToggleCoffee(event.target.checked)} />
-        Disable coffee
-      </label>
       <label className="toolbar-scale">
         <span>Node scale</span>
         <input

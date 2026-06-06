@@ -634,6 +634,9 @@ export const computeGraph = (nodes: EconNodeData[], edges: EconEdgeData[]): Grap
           customOutputs.set(node.id, outputValues);
           break;
         }
+        case 'text':
+          node.computedValue = undefined;
+          break;
         default:
           break;
       }
@@ -645,5 +648,5 @@ export const computeGraph = (nodes: EconNodeData[], edges: EconEdgeData[]): Grap
     }
   }
 
-  return { nodes: Array.from(nodeMap.values()), errors };
+  return { nodes: Array.from(nodeMap.values()), errors, customOutputs };
 };

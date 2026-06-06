@@ -25,6 +25,8 @@ const ECON_NODE_OPTIONS: { kind: NodeKind; label: string }[] = [
   { kind: 'custom', label: 'Custom' },
 ];
 
+const TEXT_NODE_OPTIONS: { kind: NodeKind; label: string }[] = [{ kind: 'text', label: 'Text' }];
+
 const BASE_NODE_WIDTH = 270;
 const BASE_NODE_HEIGHT = 135;
 const BASE_NODE_FONT_SIZE = 23;
@@ -40,6 +42,12 @@ const BASE_PORT_LEFT_X = 68;
 const BASE_PORT_RIGHT_X = 203;
 const BASE_PORT_GLOW_STD = 3;
 const BASE_PORT_TARGET_OFFSET = 68;
+const TEXT_BASE_FONT_SIZE = 18;
+const TEXT_LINE_HEIGHT = 1.35;
+const TEXT_MIN_WIDTH = 240;
+const TEXT_MAX_WIDTH = 820;
+const TEXT_HORIZONTAL_PADDING = 32;
+const TEXT_VERTICAL_PADDING = 26;
 
 const scaleValue = (value: number, scale: number) => Math.round(value * scale);
 
@@ -109,6 +117,7 @@ type ThemePalette = {
     asset: { bg: string; border: string };
     output: { bg: string; border: string };
     custom: { bg: string; border: string };
+    text: { bg: string; border: string };
     value: { bg: string; border: string };
     add: { bg: string; border: string };
     subtract: { bg: string; border: string };
@@ -163,6 +172,10 @@ const readThemePalette = (): ThemePalette => {
       custom: {
         bg: readVar('--cy-node-custom-bg', '#a855f7'),
         border: readVar('--cy-node-custom-border', '#7e22ce'),
+      },
+      text: {
+        bg: readVar('--cy-node-text-bg', '#f8fafc'),
+        border: readVar('--cy-node-text-border', '#94a3b8'),
       },
       value: {
         bg: readVar('--cy-node-value-bg', '#64748b'),
@@ -236,6 +249,8 @@ const getNodeBg = (palette: ThemePalette, kind: NodeKind) => {
       return palette.kinds.output.bg;
     case 'custom':
       return palette.kinds.custom.bg;
+    case 'text':
+      return palette.kinds.text.bg;
     case 'value':
       return palette.kinds.value.bg;
     case 'add':
@@ -289,6 +304,86 @@ const buildPortOverlay = (node: EconNodeData, scale: number, palette: ThemePalet
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
+const getTextWidth = (() => {
+  let canvas: HTMLCanvasElement | null = null;
+  let cachedFont = '';
+  let cachedFamily = '';
+  return (text: string) => {
+    const fallback = text.length * TEXT_BASE_FONT_SIZE * 0.56;
+    if (typeof document === 'undefined') {
+      return fallback;
+    }
+    if (!canvas) {
+      canvas = document.createElement('canvas');
+    }
+    const context = canvas.getContext('2d');
+    if (!context) {
+      return fallback;
+    }
+    if (!cachedFamily) {
+      cachedFamily = (document.body && getComputedStyle(document.body).fontFamily) || 'sans-serif';
+    }
+    const font = `${TEXT_BASE_FONT_SIZE}px ${cachedFamily}`;
+    if (cachedFont !== font) {
+      context.font = font;
+      cachedFont = font;
+    }
+    return context.measureText(text).width;
+  };
+})();
+
+const countWrappedLines = (line: string, maxWidth: number) => {
+  if (!line.trim()) {
+    return 1;
+  }
+  const words = line.split(/\s+/);
+  let lines = 1;
+  let current = '';
+  const charWidth = Math.max(1, getTextWidth('M'));
+  const maxCharsPerLine = Math.max(1, Math.floor(maxWidth / charWidth));
+
+  words.forEach((word) => {
+    const candidate = current ? `${current} ${word}` : word;
+    if (getTextWidth(candidate) <= maxWidth) {
+      current = candidate;
+      return;
+    }
+    if (current) {
+      lines += 1;
+      current = word;
+    }
+    if (getTextWidth(word) > maxWidth) {
+      const extraLines = Math.ceil(word.length / maxCharsPerLine);
+      lines += Math.max(0, extraLines - 1);
+      current = '';
+    }
+  });
+
+  return lines;
+};
+
+const buildTextLayout = (text: string, scale: number) => {
+  const normalized = text.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+  const contentMaxWidth = TEXT_MAX_WIDTH - TEXT_HORIZONTAL_PADDING;
+  const contentMinWidth = TEXT_MIN_WIDTH - TEXT_HORIZONTAL_PADDING;
+  const longestLine = Math.max(0, ...lines.map((line) => getTextWidth(line)));
+  const contentWidth = Math.min(contentMaxWidth, Math.max(contentMinWidth, longestLine));
+  const lineCount =
+    longestLine <= contentWidth
+      ? Math.max(1, lines.length)
+      : lines.reduce((total, line) => total + countWrappedLines(line, contentWidth), 0);
+  const baseHeight = Math.max(
+    TEXT_BASE_FONT_SIZE * TEXT_LINE_HEIGHT + TEXT_VERTICAL_PADDING,
+    lineCount * TEXT_BASE_FONT_SIZE * TEXT_LINE_HEIGHT + TEXT_VERTICAL_PADDING,
+  );
+  return {
+    nodeWidth: scaleValue(contentWidth + TEXT_HORIZONTAL_PADDING, scale),
+    nodeHeight: scaleValue(baseHeight, scale),
+    textMaxWidth: scaleValue(contentWidth, scale),
+  };
+};
+
 const formatNodeLabel = (node: EconNodeData, error?: string) => {
   let suffix = '';
   switch (node.kind) {
@@ -298,6 +393,8 @@ const formatNodeLabel = (node: EconNodeData, error?: string) => {
     case 'custom':
       suffix = formatMonthlyLabel(node.computedValue);
       break;
+    case 'text':
+      return node.label;
     case 'value':
     case 'add':
     case 'subtract':
@@ -367,11 +464,13 @@ const applyComputeResults = (cy: Core, result: GraphComputeResult, scale: number
       const error = result.errors[node.id];
       const portOverlay = isMathKind(node.kind) ? buildPortOverlay(node, scale, palette) : undefined;
       const glowColor = getGlowColor(palette, node.kind);
+      const textLayout = node.kind === 'text' ? buildTextLayout(node.label, scale) : undefined;
       element.data({
         ...node,
         displayLabel: formatNodeLabel(node, error),
         portOverlay,
         glowColor,
+        ...textLayout,
       });
     }
   });
@@ -537,6 +636,22 @@ const buildStyles = (palette: ThemePalette) => [
     },
   },
   {
+    selector: 'node[kind = "text"]',
+    style: {
+      'background-color': palette.kinds.text.bg,
+      'border-color': palette.kinds.text.border,
+      width: 'data(nodeWidth)',
+      height: 'data(nodeHeight)',
+      'text-valign': 'center',
+      'text-halign': 'center',
+      'text-justification': 'left',
+      'text-wrap': 'wrap',
+      'text-max-width': 'data(textMaxWidth)',
+      'font-size': TEXT_BASE_FONT_SIZE,
+      color: palette.node.baseText,
+    },
+  },
+  {
     selector: 'node[kind = "value"]',
     style: {
       'background-color': palette.kinds.value.bg,
@@ -612,6 +727,13 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
         height,
         'font-size': fontSize,
         'text-max-width': `${textMaxWidth}px`,
+      })
+      .selector('node[kind = "text"]')
+      .style({
+        width: 'data(nodeWidth)',
+        height: 'data(nodeHeight)',
+        'text-max-width': 'data(textMaxWidth)',
+        'font-size': scaleValue(TEXT_BASE_FONT_SIZE, scale),
       })
       .selector('node[kind = "add"], node[kind = "subtract"], node[kind = "multiply"], node[kind = "divide"]')
       .style({
@@ -706,7 +828,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
 
   const createNodeAt = (position: { x: number; y: number }, kind: NodeKind) => {
     const id = `node-${Date.now()}-${nodeSequence}`;
-    const label = `Node ${cy.nodes().length + 1}`;
+    const label = kind === 'text' ? 'Text' : `Node ${cy.nodes().length + 1}`;
     nodeSequence += 1;
     const node: EconNodeData = {
       id,
@@ -760,6 +882,9 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
           [outputPortId]: internalOutputId,
         },
       };
+    }
+    if (kind === 'text') {
+      Object.assign(node, buildTextLayout(label, nodeScale));
     }
     cy.add({
       group: 'nodes',
@@ -890,6 +1015,10 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       divider.className = 'context-menu-divider';
       menu.appendChild(divider);
       addSection('Economy', ECON_NODE_OPTIONS);
+      const dividerText = document.createElement('div');
+      dividerText.className = 'context-menu-divider';
+      menu.appendChild(dividerText);
+      addSection('Text', TEXT_NODE_OPTIONS);
       container.appendChild(menu);
       contextMenu = menu;
     }
@@ -991,10 +1120,15 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       return;
     }
     const current = node.data() as EconNodeData;
-    node.data({
+    const merged = {
       ...current,
       ...data,
-    });
+    };
+    const nextData =
+      merged.kind === 'text' && typeof merged.label === 'string'
+        ? { ...merged, ...buildTextLayout(merged.label, nodeScale) }
+        : merged;
+    node.data(nextData);
     recompute(cy, nodeScale, themePalette);
   };
 

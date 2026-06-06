@@ -51,6 +51,8 @@
   --cy-node-output-border: #be185d;
   --cy-node-custom-bg: #a855f7;
   --cy-node-custom-border: #7e22ce;
+  --cy-node-text-bg: #f8fafc;
+  --cy-node-text-border: #94a3b8;
   --cy-node-value-bg: #64748b;
   --cy-node-value-border: #475569;
   --cy-node-add-bg: #14b8a6;
@@ -117,6 +119,8 @@
   --cy-node-output-border: #db2777;
   --cy-node-custom-bg: #a855f7;
   --cy-node-custom-border: #9333ea;
+  --cy-node-text-bg: #111827;
+  --cy-node-text-border: #475569;
   --cy-node-value-bg: #64748b;
   --cy-node-value-border: #475569;
   --cy-node-add-bg: #14b8a6;
