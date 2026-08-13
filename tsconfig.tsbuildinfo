@@ -1,1 +1,0 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/engine/computegraph.ts","./src/graph/createcytoscape.ts","./src/models/types.ts","./src/ui/hierarchypanel.tsx","./src/ui/inspectorpanel.tsx","./src/ui/toolbar.tsx","./src/ui/workspacepanel.tsx"],"version":"5.9.3"}
