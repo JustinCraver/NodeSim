@@ -41,8 +41,12 @@ trusted network and stop it when testing is complete.
 
 ```powershell
 npm.cmd run typecheck
+npm.cmd test
 npm.cmd run build
 npm.cmd run check
 ```
 
-`check` runs the typecheck followed by a production build.
+`check` runs the typecheck, deterministic characterization suite, and production
+build. Pending tests document confirmed defects without making the suite red.
+The proposed semantics contract is recorded in
+[`docs/adr/0001-product-semantics.md`](docs/adr/0001-product-semantics.md).
