@@ -6,9 +6,25 @@ import ReactGridLayout, {
   type LayoutItem,
   type ResizeHandleAxis,
 } from 'react-grid-layout';
-import type { CustomNodeConfig, EconEdgeData, EconNodeData, GraphData } from './models/types';
+import type {
+  CustomNodeConfig,
+  EconEdgeData,
+  EconNodeData,
+  GraphData,
+  GraphDocument,
+  SimulationSettingsV1,
+} from './models/types';
 import { createCytoscape } from './graph/createCytoscape';
-import { computeGraph } from './engine/computeGraph';
+import { validateConnection } from './engine/connectionValidation';
+import { GraphDocumentStorage } from './document/documentStorage';
+import {
+  createGraphDocument,
+  graphDocumentToRuntimeGraph,
+  MAX_HORIZON_MONTHS,
+  mergeCustomGraphIntoRoot,
+  migrateGraphDocument,
+  parseGraphDocumentText,
+} from './document/graphDocument';
 import { HierarchyPanel } from './ui/HierarchyPanel';
 import { InspectorPanel } from './ui/InspectorPanel';
 import { Toolbar } from './ui/Toolbar';
@@ -19,6 +35,7 @@ import 'react-resizable/css/styles.css';
 import './styles.css';
 
 const DEFAULT_NODE_SCALE = 2;
+const AUTOSAVE_DEBOUNCE_MS = 250;
 const WORKSPACE_STORAGE_KEY = 'econgraph.workspace.v1';
 const WORKSPACE_GRID_COLS = 12;
 const WORKSPACE_MIN_ROWS = 30;
@@ -75,6 +92,22 @@ type WorkspaceState = {
 type CustomViewState = {
   parentGraph: GraphData;
   customNodeId: string;
+};
+
+type InitialDocumentState = {
+  document: GraphDocument;
+  status: string;
+};
+
+const loadInitialDocument = (): InitialDocumentState => {
+  if (typeof window === 'undefined') {
+    return { document: migrateGraphDocument(demoGraph), status: 'Demo loaded' };
+  }
+  const loaded = new GraphDocumentStorage(window.localStorage).load(demoGraph as GraphData);
+  return {
+    document: loaded.document,
+    status: loaded.warning ?? (loaded.source === 'fallback' ? 'Demo loaded' : 'Saved document restored'),
+  };
 };
 
 const PANEL_TYPE_LABELS: Record<PanelType, string> = {
@@ -307,8 +340,6 @@ const getInitialTheme = (): 'light' | 'dark' => {
   return 'light';
 };
 
-const getDefaultPortId = (ports: { id: string }[] | undefined) => ports?.[0]?.id;
-
 const ensureCustomPorts = (custom: CustomNodeConfig) => {
   const internalGraph = {
     nodes: custom.internalGraph.nodes.map((node) => ({ ...node })),
@@ -320,6 +351,33 @@ const ensureCustomPorts = (custom: CustomNodeConfig) => {
   const nodeIds = new Set(internalGraph.nodes.map((node) => node.id));
   const nodeMap = new Map(internalGraph.nodes.map((node) => [node.id, node]));
   let changed = false;
+  const usedFormulaIds = new Set<string>();
+  const inputs = custom.inputs.map((port) => {
+    if (port.valueType) {
+      return port;
+    }
+    changed = true;
+    return { ...port, valueType: 'scalar' as const };
+  });
+  const outputs = custom.outputs.map((port, index) => {
+    let formulaId = port.formulaId?.replace(/[^A-Za-z0-9_]/g, '_') ?? port.id.replace(/[^A-Za-z0-9_]/g, '_');
+    if (!/^[A-Za-z_]/.test(formulaId)) {
+      formulaId = `output_${index + 1}`;
+    }
+    const base = formulaId;
+    let sequence = 2;
+    while (usedFormulaIds.has(formulaId)) {
+      formulaId = `${base}_${sequence}`;
+      sequence += 1;
+    }
+    usedFormulaIds.add(formulaId);
+    const valueType = port.valueType ?? 'scalar';
+    if (port.formulaId !== formulaId || port.valueType !== valueType) {
+      changed = true;
+      return { ...port, valueType, formulaId };
+    }
+    return port;
+  });
 
   const createValueNode = (id: string, label: string) => {
     const node = {
@@ -344,7 +402,7 @@ const ensureCustomPorts = (custom: CustomNodeConfig) => {
     return candidate;
   };
 
-  custom.inputs.forEach((port, index) => {
+  inputs.forEach((port, index) => {
     const label = port.label || `Input ${index + 1}`;
     const boundId = inputBindings[port.id];
     const boundNode = boundId ? nodeMap.get(boundId) : undefined;
@@ -375,7 +433,7 @@ const ensureCustomPorts = (custom: CustomNodeConfig) => {
     inputBindings[port.id] = nextId;
   });
 
-  custom.outputs.forEach((port, index) => {
+  outputs.forEach((port, index) => {
     const label = port.label || `Output ${index + 1}`;
     const boundId = outputBindings[port.id];
     const boundNode = boundId ? nodeMap.get(boundId) : undefined;
@@ -408,136 +466,36 @@ const ensureCustomPorts = (custom: CustomNodeConfig) => {
 
   return {
     ...custom,
+    inputs,
+    outputs,
     internalGraph,
     inputBindings,
     outputBindings,
   };
 };
 
-const computeCustomInputTotals = (graph: GraphData, customNodeId: string) => {
-  const result = computeGraph(graph.nodes, graph.edges);
-  const nodeMap = new Map(result.nodes.map((node) => [node.id, node]));
-  const customOutputs = result.customOutputs ?? new Map<string, Map<string, number>>();
-  const targetNode = nodeMap.get(customNodeId);
-  const targetCustom = targetNode?.custom;
-
-  if (!targetCustom) {
-    return new Map<string, number>();
-  }
-
-  const inputPortIds = new Set(targetCustom.inputs.map((port) => port.id));
-  const defaultInputPortId = getDefaultPortId(targetCustom.inputs);
-  const totals = new Map<string, number>();
-
-  const getEdgeValue = (edge: EconEdgeData) => {
-    const sourceNode = nodeMap.get(edge.source);
-    if (!sourceNode) {
-      return 0;
-    }
-    if (sourceNode.kind !== 'custom') {
-      return sourceNode.computedValue ?? 0;
-    }
-    const portId = edge.sourcePort ?? getDefaultPortId(sourceNode.custom?.outputs);
-    if (!portId) {
-      return 0;
-    }
-    const outputs = customOutputs.get(sourceNode.id);
-    if (outputs?.has(portId)) {
-      return outputs.get(portId) ?? 0;
-    }
-    return sourceNode.computedValue ?? 0;
-  };
-
-  graph.edges.forEach((edge) => {
-    if (edge.target !== customNodeId) {
-      return;
-    }
-    const portId = edge.targetPort ?? defaultInputPortId;
-    if (!portId || !inputPortIds.has(portId)) {
-      return;
-    }
-    const value = getEdgeValue(edge);
-    totals.set(portId, (totals.get(portId) ?? 0) + value);
-  });
-
-  return totals;
-};
-
-const syncCustomInputNodes = (custom: CustomNodeConfig, inputTotals: Map<string, number>) => {
-  const boundValues = new Map<string, number>();
-
-  custom.inputs.forEach((port) => {
-    const boundId = custom.inputBindings[port.id];
-    if (!boundId) {
-      return;
-    }
-    boundValues.set(boundId, inputTotals.get(port.id) ?? 0);
-  });
-
-  if (boundValues.size === 0) {
-    return custom;
-  }
-
-  let changed = false;
-  const nextNodes = custom.internalGraph.nodes.map((node) => {
-    const nextValue = boundValues.get(node.id);
-    if (nextValue === undefined) {
-      return node;
-    }
-    if (node.kind !== 'income' && node.kind !== 'value') {
-      return node;
-    }
-    const nextNode = { ...node };
-    if (node.baseValue !== nextValue) {
-      nextNode.baseValue = nextValue;
-      changed = true;
-    }
-    if (node.kind === 'income' && node.timeUnit !== 'per_month') {
-      nextNode.timeUnit = 'per_month';
-      changed = true;
-    }
-    return nextNode;
-  });
-
-  if (!changed) {
-    return custom;
-  }
-
-  return {
-    ...custom,
-    internalGraph: {
-      ...custom.internalGraph,
-      nodes: nextNodes,
-    },
-  };
-};
-
-const mergeActiveCustomGraph = (parentGraph: GraphData, customNodeId: string, internalGraph: GraphData): GraphData => ({
-  ...parentGraph,
-  nodes: parentGraph.nodes.map((node) => {
-    if (node.id !== customNodeId || !node.custom) {
-      return node;
-    }
-    return {
-      ...node,
-      custom: {
-        ...node.custom,
-        internalGraph,
-      },
-    };
-  }),
-});
-
 export const App = () => {
+  const [initialDocumentState] = useState<InitialDocumentState>(loadInitialDocument);
+  const initialGraphRef = useRef<GraphData>(graphDocumentToRuntimeGraph(initialDocumentState.document));
+  const storageRef = useRef<GraphDocumentStorage | null>(
+    typeof window === 'undefined' ? null : new GraphDocumentStorage(window.localStorage),
+  );
+  const previousImportRef = useRef<GraphDocument | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<GraphController | null>(null);
   const { width: workspaceWidth, containerRef: workspaceContainerRef, mounted: isWorkspaceMounted } = useContainerWidth();
   const [selectedNode, setSelectedNode] = useState<EconNodeData | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<EconEdgeData | null>(null);
-  const [nodeScale, setNodeScale] = useState((demoGraph as GraphData).nodeScale ?? DEFAULT_NODE_SCALE);
+  const [nodeScale, setNodeScale] = useState(initialGraphRef.current.nodeScale ?? DEFAULT_NODE_SCALE);
+  const [simulationSettings, setSimulationSettings] = useState<SimulationSettingsV1>(
+    initialDocumentState.document.settings.simulation,
+  );
+  const [documentStatus, setDocumentStatus] = useState(initialDocumentState.status);
+  const [isDocumentDirty, setIsDocumentDirty] = useState(false);
+  const [canUndoImport, setCanUndoImport] = useState(false);
   const [customView, setCustomView] = useState<CustomViewState | null>(null);
   const customViewRef = useRef<CustomViewState | null>(null);
-  const [graphSnapshot, setGraphSnapshot] = useState<GraphData>(demoGraph as GraphData);
+  const [graphSnapshot, setGraphSnapshot] = useState<GraphData>(initialGraphRef.current);
   const [isHierarchyFocusEnabled, setIsHierarchyFocusEnabled] = useState(true);
   const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
   const [workspaceState, setWorkspaceState] = useState<WorkspaceState>(loadWorkspaceState);
@@ -562,8 +520,26 @@ export const App = () => {
     const currentGraph = controller.exportGraph();
     const viewState = customViewRef.current;
     setGraphSnapshot(
-      viewState ? mergeActiveCustomGraph(viewState.parentGraph, viewState.customNodeId, currentGraph) : currentGraph,
+      viewState ? mergeCustomGraphIntoRoot(viewState.parentGraph, viewState.customNodeId, currentGraph) : currentGraph,
     );
+  };
+
+  const handleAuthoredGraphChange = (currentGraph: GraphData) => {
+    const viewState = customViewRef.current;
+    const rootGraph = viewState
+      ? mergeCustomGraphIntoRoot(viewState.parentGraph, viewState.customNodeId, currentGraph)
+      : currentGraph;
+    setGraphSnapshot(rootGraph);
+    setIsDocumentDirty(true);
+    setDocumentStatus('Unsaved changes');
+  };
+
+  const getCurrentRootGraph = () => {
+    const currentGraph = controllerRef.current?.exportGraph() ?? graphSnapshot;
+    const viewState = customViewRef.current;
+    return viewState
+      ? mergeCustomGraphIntoRoot(viewState.parentGraph, viewState.customNodeId, currentGraph)
+      : currentGraph;
   };
 
   const selectNode = (nodeId: string) => {
@@ -621,13 +597,16 @@ export const App = () => {
               item.id === node.id ? { ...item, custom: ensuredCustom } : item,
             ),
           };
-    const inputTotals = computeCustomInputTotals(updatedParent, node.id);
-    const syncedCustom = syncCustomInputNodes(ensuredCustom, inputTotals);
     const viewState = { parentGraph: updatedParent, customNodeId: node.id };
     customViewRef.current = viewState;
     setCustomView(viewState);
-    controller.importGraph(syncedCustom.internalGraph);
-    setGraphSnapshot(mergeActiveCustomGraph(updatedParent, node.id, syncedCustom.internalGraph));
+    controller.importGraph(ensuredCustom.internalGraph);
+    const rootGraph = mergeCustomGraphIntoRoot(updatedParent, node.id, ensuredCustom.internalGraph);
+    setGraphSnapshot(rootGraph);
+    if (ensuredCustom !== node.custom) {
+      setIsDocumentDirty(true);
+      setDocumentStatus('Unsaved changes');
+    }
     setSelectedNode(null);
     setSelectedEdge(null);
     return true;
@@ -641,7 +620,7 @@ export const App = () => {
     if (!containerRef.current || controllerRef.current) {
       return;
     }
-    controllerRef.current = createCytoscape(containerRef.current, demoGraph as GraphData, {
+    controllerRef.current = createCytoscape(containerRef.current, initialGraphRef.current, {
       onSelectNode: (node) => {
         setSelectedNode(node);
         if (node) {
@@ -656,7 +635,9 @@ export const App = () => {
         }
       },
       onOpenCustomNode: handleOpenCustomNode,
-    });
+      onGraphChange: handleAuthoredGraphChange,
+      onConnectionRejected: (reason) => setDocumentStatus(`Connection rejected: ${reason}`),
+    }, simulationSettings);
     scheduleGraphResize();
   }, [isWorkspaceMounted, scheduleGraphResize]);
 
@@ -669,12 +650,42 @@ export const App = () => {
   }, [theme]);
 
   useEffect(() => {
+    if (!isDocumentDirty) {
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      try {
+        const document = createGraphDocument(graphSnapshot, simulationSettings);
+        const revision = storageRef.current?.save(document);
+        setIsDocumentDirty(false);
+        setDocumentStatus(revision ? `Saved revision ${revision}` : 'Document validated');
+      } catch (error) {
+        setDocumentStatus(`Autosave blocked: ${error instanceof Error ? error.message : 'invalid document'}`);
+      }
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeout);
+  }, [graphSnapshot, isDocumentDirty, simulationSettings]);
+
+  useEffect(() => {
     const controller = controllerRef.current;
     if (!controller) {
       return;
     }
     controller.setNodeScale(nodeScale);
   }, [nodeScale]);
+
+  useEffect(() => {
+    const controller = controllerRef.current;
+    if (!controller) {
+      return;
+    }
+    controller.setSimulationSettings(simulationSettings);
+    const selected = controller.cy.nodes(':selected').first();
+    if (selected && !selected.empty()) {
+      setSelectedNode({ ...(selected.data() as EconNodeData) });
+    }
+    refreshGraphSnapshot();
+  }, [simulationSettings]);
 
   const handleNodeChange = (nodeId: string, data: Partial<EconNodeData>) => {
     const controller = controllerRef.current;
@@ -739,6 +750,8 @@ export const App = () => {
     customViewRef.current = null;
     setCustomView(null);
     setGraphSnapshot(updatedParent);
+    setIsDocumentDirty(true);
+    setDocumentStatus('Unsaved changes');
     if (shouldFocusNode) {
       window.requestAnimationFrame(() => focusNode(viewState.customNodeId));
     }
@@ -747,6 +760,21 @@ export const App = () => {
   const handleEdgeChange = (edgeId: string, data: Partial<EconEdgeData>) => {
     const controller = controllerRef.current;
     if (!controller) {
+      return;
+    }
+    const currentGraph = controller.exportGraph();
+    const currentEdge = currentGraph.edges.find((edge) => edge.id === edgeId);
+    if (!currentEdge) {
+      return;
+    }
+    const candidate = { ...currentEdge, ...data };
+    const validation = validateConnection(
+      { ...currentGraph, edges: currentGraph.edges.filter((edge) => edge.id !== edgeId) },
+      candidate,
+      simulationSettings,
+    );
+    if (!validation.valid) {
+      setDocumentStatus(`Connection rejected: ${validation.reason}`);
       return;
     }
     controller.updateEdgeData(edgeId, data);
@@ -766,9 +794,8 @@ export const App = () => {
     return data ? { ...data } : null;
   };
 
-  const handleExport = () => controllerRef.current?.exportGraph() ?? (demoGraph as GraphData);
-
-  const handleImport = (data: GraphData) => {
+  const applyImportedDocument = (document: GraphDocument) => {
+    const data = graphDocumentToRuntimeGraph(document);
     customViewRef.current = null;
     setCustomView(null);
     setSelectedNode(null);
@@ -776,8 +803,38 @@ export const App = () => {
     if (data.nodeScale !== undefined) {
       setNodeScale(data.nodeScale);
     }
+    setSimulationSettings(document.settings.simulation);
+    controllerRef.current?.setSimulationSettings(document.settings.simulation);
     controllerRef.current?.importGraph(data);
     setGraphSnapshot(data);
+    setIsDocumentDirty(true);
+    setDocumentStatus('Imported document validated; saving');
+  };
+
+  const handleExport = () => createGraphDocument(getCurrentRootGraph(), simulationSettings);
+
+  const handleImportText = (text: string) => {
+    try {
+      const candidate = parseGraphDocumentText(text);
+      previousImportRef.current = handleExport();
+      storageRef.current?.rememberLegacyImport(text);
+      applyImportedDocument(candidate);
+      setCanUndoImport(true);
+      return undefined;
+    } catch (error) {
+      return error instanceof Error ? error.message : 'Import validation failed.';
+    }
+  };
+
+  const handleUndoImport = () => {
+    const previous = previousImportRef.current;
+    if (!previous) {
+      return;
+    }
+    applyImportedDocument(previous);
+    previousImportRef.current = null;
+    setCanUndoImport(false);
+    setDocumentStatus('Import undone; saving restored document');
   };
 
   const handleHierarchySelectNode = (nodeId: string) => {
@@ -898,9 +955,21 @@ export const App = () => {
           <div className="canvas-wrapper">
             <Toolbar
               onExport={handleExport}
-              onImport={handleImport}
+              onImportText={handleImportText}
+              onUndoImport={canUndoImport ? handleUndoImport : undefined}
               nodeScale={displayNodeScale}
               onNodeScaleChange={(value) => setNodeScale(value * DEFAULT_NODE_SCALE)}
+              horizonMonths={simulationSettings.horizonMonths}
+              onHorizonMonthsChange={(value) => {
+                if (!Number.isInteger(value) || value < 1 || value > MAX_HORIZON_MONTHS) {
+                  setDocumentStatus(`Horizon must be a whole number from 1 to ${MAX_HORIZON_MONTHS}.`);
+                  return;
+                }
+                setSimulationSettings((current) => ({ ...current, horizonMonths: value }));
+                setIsDocumentDirty(true);
+                setDocumentStatus('Unsaved changes');
+              }}
+              documentStatus={documentStatus}
               isCustomView={Boolean(customView)}
               onExitCustomView={customView ? handleExitCustomView : undefined}
               theme={theme}

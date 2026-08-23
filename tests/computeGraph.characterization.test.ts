@@ -170,8 +170,8 @@ describe('asset, output, and text nodes', () => {
     const result = computeFixture(
       graph(
         [
-          { id: 'contribution', label: 'Contribution', kind: 'value', baseValue: 100 },
-          { id: 'asset', label: 'Asset', kind: 'asset', interestRateAnnual: 0.12 },
+          { id: 'contribution', label: 'Contribution', kind: 'income', baseValue: 100, timeUnit: 'per_month' },
+          { id: 'asset', label: 'Asset', kind: 'asset', initialBalance: 0, interestRateAnnual: 0.12 },
         ],
         [flow('contribution-asset', 'contribution', 'asset')],
       ),
@@ -185,25 +185,26 @@ describe('asset, output, and text nodes', () => {
     expect(asset.computedValue).toBeCloseTo(expectedEndingBalance, 6);
   });
 
-  it('returns a one-based target month and -1 for an unreachable target', () => {
+  it('returns a one-based target month and a tagged unreachable state', () => {
     const result = computeFixture(
       graph(
         [
-          { id: 'contribution', label: 'Contribution', kind: 'value', baseValue: 100 },
-          { id: 'asset', label: 'Asset', kind: 'asset', interestRateAnnual: 0 },
+          { id: 'contribution', label: 'Contribution', kind: 'income', baseValue: 100, timeUnit: 'per_month' },
+          { id: 'asset', label: 'Asset', kind: 'asset', initialBalance: 0, interestRateAnnual: 0 },
           { id: 'reached', label: 'Reached', kind: 'output', targetAmount: 250 },
           { id: 'unreachable', label: 'Unreachable', kind: 'output', targetAmount: 20_000 },
         ],
         [
           flow('contribution-asset', 'contribution', 'asset'),
-          flow('asset-reached', 'asset', 'reached'),
-          flow('asset-unreachable', 'asset', 'unreachable'),
+          flow('asset-reached', 'asset', 'reached', { sourcePort: 'balance' }),
+          flow('asset-unreachable', 'asset', 'unreachable', { sourcePort: 'balance' }),
         ],
       ),
     );
 
     expect(requireNode(result, 'reached').computedValue).toBe(3);
-    expect(requireNode(result, 'unreachable').computedValue).toBe(-1);
+    expect(requireNode(result, 'unreachable').computedValue).toBeUndefined();
+    expect(requireNode(result, 'unreachable').outputState).toEqual({ kind: 'unreachable' });
   });
 
   it('keeps text nodes outside computation', () => {

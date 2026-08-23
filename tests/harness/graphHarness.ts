@@ -1,4 +1,5 @@
 import { computeGraph } from '../../src/engine/computeGraph';
+import { graphDocumentToRuntimeGraph, migrateGraphDocument } from '../../src/document/graphDocument';
 import type { EconEdgeData, EconNodeData, GraphComputeResult, GraphData } from '../../src/models/types';
 
 export const graph = (nodes: EconNodeData[], edges: EconEdgeData[] = [], nodeScale?: number): GraphData => ({
@@ -23,6 +24,12 @@ export const flow = (
 export const computeFixture = (fixture: GraphData): GraphComputeResult => {
   const isolated = structuredClone(fixture);
   return computeGraph(isolated.nodes, isolated.edges);
+};
+
+export const computeMigratedFixture = (fixture: GraphData): GraphComputeResult => {
+  const document = migrateGraphDocument(structuredClone(fixture));
+  const graphData = graphDocumentToRuntimeGraph(document);
+  return computeGraph(graphData.nodes, graphData.edges, document.settings.simulation);
 };
 
 export const requireNode = (result: GraphComputeResult, id: string): EconNodeData => {

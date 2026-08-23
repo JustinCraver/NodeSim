@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "settings": {
+    "simulation": {
+      "version": 1,
+      "horizonMonths": 12,
+      "contributionTiming": "end-of-month",
+      "annualRateConvention": "nominal-divided-by-12",
+      "monthZero": "initial-balance"
+    }
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "seed",
+        "label": "Seed",
+        "kind": "value",
+        "baseValue": 0
+      },
+      {
+        "id": "box",
+        "label": "Box",
+        "kind": "custom",
+        "custom": {
+          "inputs": [
+            {
+              "id": "in",
+              "label": "Input",
+              "valueType": "scalar"
+            }
+          ],
+          "outputs": [
+            {
+              "id": "net-port",
+              "label": "Net",
+              "valueType": "scalar",
+              "formulaId": "net"
+            },
+            {
+              "id": "gross-port",
+              "label": "Gross",
+              "valueType": "scalar",
+              "formulaId": "gross"
+            }
+          ],
+          "internalGraph": {
+            "nodes": [
+              {
+                "id": "input",
+                "label": "Input",
+                "kind": "value",
+                "baseValue": 0
+              },
+              {
+                "id": "netValue",
+                "label": "Net",
+                "kind": "value",
+                "baseValue": 7
+              },
+              {
+                "id": "grossValue",
+                "label": "Gross",
+                "kind": "value",
+                "baseValue": 3
+              }
+            ],
+            "edges": []
+          },
+          "inputBindings": {
+            "in": "input"
+          },
+          "outputBindings": {
+            "net-port": "netValue",
+            "gross-port": "grossValue"
+          }
+        }
+      },
+      {
+        "id": "formula",
+        "label": "Formula",
+        "kind": "calc",
+        "formula": "box.net + box.gross",
+        "outputType": "scalar"
+      }
+    ],
+    "edges": [
+      {
+        "id": "seed-box",
+        "source": "seed",
+        "target": "box",
+        "targetPort": "in",
+        "kind": "flow",
+        "weight": 1,
+        "lagMonths": 0
+      },
+      {
+        "id": "box-net-formula",
+        "source": "box",
+        "sourcePort": "net-port",
+        "target": "formula",
+        "kind": "flow",
+        "weight": 1,
+        "lagMonths": 0
+      },
+      {
+        "id": "box-gross-formula",
+        "source": "box",
+        "sourcePort": "gross-port",
+        "target": "formula",
+        "kind": "flow",
+        "weight": 1,
+        "lagMonths": 0
+      }
+    ]
+  }
+}

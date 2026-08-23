@@ -1,6 +1,20 @@
 import { useEffect, useState } from 'react';
 import type React from 'react';
-import type { CustomNodeConfig, EconEdgeData, EconNodeData, NodeKind, PortDef, TimeUnit } from '../models/types';
+import {
+  graphDocumentToRuntimeGraph,
+  MAX_HORIZON_MONTHS,
+  migrateGraphDocument,
+} from '../document/graphDocument';
+import type {
+  CustomNodeConfig,
+  EconEdgeData,
+  EconNodeData,
+  FormulaValueType,
+  NodeKind,
+  PortDef,
+  TimeUnit,
+  ValueType,
+} from '../models/types';
 
 const TIME_UNIT_OPTIONS: { value: TimeUnit; label: string }[] = [
   { value: 'per_day', label: 'Per Day' },
@@ -38,9 +52,33 @@ const NODE_KIND_GROUPS: { label: string; options: { value: NodeKind; label: stri
 ];
 
 const BINARY_PORT_OPTIONS: PortDef[] = [
-  { id: '1', label: '1' },
-  { id: '2', label: '2' },
+  { id: '1', label: '1', valueType: 'scalar' },
+  { id: '2', label: '2', valueType: 'scalar' },
 ];
+
+const COMPUTATIONAL_VALUE_TYPES: Exclude<ValueType, 'none'>[] = ['scalar', 'monthly-flow', 'timeseries'];
+
+const getNodeBindingType = (node: EconNodeData): ValueType | undefined => {
+  if (node.kind === 'income' || node.kind === 'expense') {
+    return 'monthly-flow';
+  }
+  if (node.kind === 'value' || node.kind === 'output') {
+    return 'scalar';
+  }
+  if (node.kind === 'calc') {
+    return node.outputType ?? 'scalar';
+  }
+  if (node.kind === 'asset') {
+    return 'scalar';
+  }
+  if (node.kind === 'custom' && node.custom?.outputs.length === 1) {
+    return node.custom.outputs[0].valueType;
+  }
+  if (node.kind === 'text') {
+    return 'none';
+  }
+  return node.valueType ?? 'scalar';
+};
 
 type InspectorPanelProps = {
   node: EconNodeData | null;
@@ -85,7 +123,15 @@ export const InspectorPanel = ({
   if (!node && edge) {
     const sourceNode = getNodeById(edge.source);
     const targetNode = getNodeById(edge.target);
-    const sourceOutputs = sourceNode?.kind === 'custom' ? sourceNode.custom?.outputs ?? [] : [];
+    const sourceOutputs =
+      sourceNode?.kind === 'custom'
+        ? sourceNode.custom?.outputs ?? []
+        : sourceNode?.kind === 'asset'
+          ? [
+              { id: 'balance', label: 'Balance series', valueType: 'timeseries' as const },
+              { id: 'endingBalance', label: 'Ending balance', valueType: 'scalar' as const },
+            ]
+          : [];
     const targetInputs = targetNode?.kind === 'custom' ? targetNode.custom?.inputs ?? [] : [];
     const targetMathPorts =
       targetNode?.kind === 'add' ||
@@ -116,7 +162,7 @@ export const InspectorPanel = ({
           <div className="label">Type</div>
           <div>{edge.kind}</div>
         </div>
-        {sourceNode?.kind === 'custom' && (
+        {sourceOutputs.length > 0 && (
           <label className="panel-section">
             <span className="label">Source Port</span>
             <select
@@ -125,10 +171,12 @@ export const InspectorPanel = ({
                 onChangeEdge(edge.id, { sourcePort: event.target.value === '' ? undefined : event.target.value })
               }
             >
-              <option value="">Default</option>
+              <option value="" disabled>
+                Select output
+              </option>
               {sourceOutputs.map((port) => (
                 <option key={port.id} value={port.id}>
-                  {port.label} ({port.id})
+                  {port.label} ({port.id}, {port.valueType ?? 'scalar'})
                 </option>
               ))}
             </select>
@@ -143,7 +191,9 @@ export const InspectorPanel = ({
                 onChangeEdge(edge.id, { targetPort: event.target.value === '' ? undefined : event.target.value })
               }
             >
-              <option value="">Default</option>
+              <option value="" disabled>
+                Select input
+              </option>
               {targetPortOptions.map((port) => (
                 <option key={port.id} value={port.id}>
                   {port.label} ({port.id})
@@ -152,6 +202,27 @@ export const InspectorPanel = ({
             </select>
           </label>
         )}
+        <label className="panel-section">
+          <span className="label">Weight</span>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={edge.weight ?? 1}
+            onChange={(event) => onChangeEdge(edge.id, { weight: Number(event.target.value) })}
+          />
+        </label>
+        <label className="panel-section">
+          <span className="label">Lag (months)</span>
+          <input
+            type="number"
+            min="0"
+            max={MAX_HORIZON_MONTHS}
+            step="1"
+            value={edge.lagMonths ?? 0}
+            onChange={(event) => onChangeEdge(edge.id, { lagMonths: Number(event.target.value) })}
+          />
+        </label>
         <div className="panel-section">
           <button
             className="delete-button"
@@ -194,6 +265,10 @@ export const InspectorPanel = ({
     onChange(activeNode.id, { timeUnit: event.target.value as TimeUnit });
   };
 
+  const handleFormulaTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    onChange(activeNode.id, { outputType: event.target.value as FormulaValueType });
+  };
+
   const handleCustomUpdate = (config: CustomNodeConfig) => {
     onChange(activeNode.id, { custom: config });
   };
@@ -201,12 +276,12 @@ export const InspectorPanel = ({
   const createDefaultCustomConfig = (): CustomNodeConfig => {
     const inputPortId = 'in-1';
     const outputPortId = 'out-1';
-    const internalInputId = 'internal-input';
-    const internalOutputId = 'internal-output';
+    const internalInputId = 'internal_input';
+    const internalOutputId = 'internal_output';
 
     return {
-      inputs: [{ id: inputPortId, label: 'Input' }],
-      outputs: [{ id: outputPortId, label: 'Output' }],
+      inputs: [{ id: inputPortId, label: 'Input', valueType: 'scalar' }],
+      outputs: [{ id: outputPortId, label: 'Output', valueType: 'scalar', formulaId: 'out_1' }],
       internalGraph: {
         nodes: [
           {
@@ -241,7 +316,9 @@ export const InspectorPanel = ({
       leftValue: undefined,
       rightValue: undefined,
       formula: undefined,
+      outputType: undefined,
       interestRateAnnual: undefined,
+      initialBalance: undefined,
       targetAmount: undefined,
       custom: undefined,
       input1Value: undefined,
@@ -264,9 +341,9 @@ export const InspectorPanel = ({
       case 'divide':
         return { ...reset, leftValue: 1, rightValue: 1 };
       case 'calc':
-        return { ...reset, formula: '' };
+        return { ...reset, formula: '', outputType: 'scalar' };
       case 'asset':
-        return { ...reset, interestRateAnnual: 0 };
+        return { ...reset, initialBalance: 0, interestRateAnnual: 0 };
       case 'output':
         return { ...reset, targetAmount: 0 };
       case 'text':
@@ -290,14 +367,19 @@ export const InspectorPanel = ({
     onChange(activeNode.id, update);
   };
 
-  const createPortId = (prefix: string) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const createPortId = (prefix: string) => `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
   const addPort = (type: 'input' | 'output') => {
     if (!activeNode.custom) {
       return;
     }
     const id = createPortId(type);
-    const newPort: PortDef = { id, label: type === 'input' ? 'Input' : 'Output' };
+    const newPort: PortDef = {
+      id,
+      label: type === 'input' ? 'Input' : 'Output',
+      valueType: 'scalar',
+      ...(type === 'output' ? { formulaId: id } : {}),
+    };
     if (type === 'input') {
       handleCustomUpdate({
         ...activeNode.custom,
@@ -353,6 +435,27 @@ export const InspectorPanel = ({
     }
   };
 
+  const updatePortType = (type: 'input' | 'output', portId: string, valueType: Exclude<ValueType, 'none'>) => {
+    if (!activeNode.custom) {
+      return;
+    }
+    const key = type === 'input' ? 'inputs' : 'outputs';
+    handleCustomUpdate({
+      ...activeNode.custom,
+      [key]: activeNode.custom[key].map((port) => (port.id === portId ? { ...port, valueType } : port)),
+    });
+  };
+
+  const updateOutputFormulaId = (portId: string, formulaId: string) => {
+    if (!activeNode.custom) {
+      return;
+    }
+    handleCustomUpdate({
+      ...activeNode.custom,
+      outputs: activeNode.custom.outputs.map((port) => (port.id === portId ? { ...port, formulaId } : port)),
+    });
+  };
+
   const updateBinding = (type: 'input' | 'output', portId: string, value: string) => {
     if (!activeNode.custom) {
       return;
@@ -375,16 +478,13 @@ export const InspectorPanel = ({
       return;
     }
     try {
-      const parsed = JSON.parse(internalGraphText);
-      if (!parsed || !Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) {
-        setInternalGraphError('Internal graph JSON must include nodes and edges arrays.');
-        return;
-      }
-      handleCustomUpdate({ ...activeNode.custom, internalGraph: parsed });
-      setInternalGraphText(JSON.stringify(parsed, null, 2));
+      const parsed = JSON.parse(internalGraphText) as unknown;
+      const validated = graphDocumentToRuntimeGraph(migrateGraphDocument(parsed));
+      handleCustomUpdate({ ...activeNode.custom, internalGraph: validated });
+      setInternalGraphText(JSON.stringify(validated, null, 2));
       setInternalGraphError(null);
     } catch (error) {
-      setInternalGraphError('Invalid JSON.');
+      setInternalGraphError(error instanceof Error ? error.message : 'Invalid internal graph JSON.');
     }
   };
 
@@ -461,21 +561,41 @@ export const InspectorPanel = ({
         </>
       )}
       {activeNode.kind === 'calc' && (
-        <label className="panel-section">
-          <span className="label">Formula</span>
-          <input type="text" value={activeNode.formula ?? ''} onChange={handleTextChange('formula')} />
-        </label>
+        <>
+          <label className="panel-section">
+            <span className="label">Formula</span>
+            <input type="text" value={activeNode.formula ?? ''} onChange={handleTextChange('formula')} />
+          </label>
+          <label className="panel-section">
+            <span className="label">Formula result type</span>
+            <select value={activeNode.outputType ?? 'scalar'} onChange={handleFormulaTypeChange}>
+              <option value="scalar">Scalar</option>
+              <option value="monthly-flow">Monthly flow</option>
+            </select>
+          </label>
+        </>
       )}
       {activeNode.kind === 'asset' && (
-        <label className="panel-section">
-          <span className="label">Interest Rate (Annual)</span>
-          <input
-            type="number"
-            step="0.001"
-            value={activeNode.interestRateAnnual ?? ''}
-            onChange={handleNumberChange('interestRateAnnual')}
-          />
-        </label>
+        <>
+          <label className="panel-section">
+            <span className="label">Initial balance</span>
+            <input
+              type="number"
+              min="0"
+              value={activeNode.initialBalance ?? ''}
+              onChange={handleNumberChange('initialBalance')}
+            />
+          </label>
+          <label className="panel-section">
+            <span className="label">Nominal annual rate</span>
+            <input
+              type="number"
+              step="0.001"
+              value={activeNode.interestRateAnnual ?? ''}
+              onChange={handleNumberChange('interestRateAnnual')}
+            />
+          </label>
+        </>
       )}
       {activeNode.kind === 'output' && (
         <label className="panel-section">
@@ -497,6 +617,18 @@ export const InspectorPanel = ({
                   value={port.label}
                   onChange={(event) => updatePortLabel('input', port.id, event.target.value)}
                 />
+                <select
+                  value={port.valueType ?? 'scalar'}
+                  onChange={(event) =>
+                    updatePortType('input', port.id, event.target.value as Exclude<ValueType, 'none'>)
+                  }
+                >
+                  {COMPUTATIONAL_VALUE_TYPES.map((valueType) => (
+                    <option key={valueType} value={valueType}>
+                      {valueType}
+                    </option>
+                  ))}
+                </select>
                 <span style={{ fontSize: '16px', color: '#64748b' }}>{port.id}</span>
                 <button type="button" onClick={() => removePort('input', port.id)}>
                   Remove
@@ -518,6 +650,24 @@ export const InspectorPanel = ({
                   type="text"
                   value={port.label}
                   onChange={(event) => updatePortLabel('output', port.id, event.target.value)}
+                />
+                <select
+                  value={port.valueType ?? 'scalar'}
+                  onChange={(event) =>
+                    updatePortType('output', port.id, event.target.value as Exclude<ValueType, 'none'>)
+                  }
+                >
+                  {COMPUTATIONAL_VALUE_TYPES.map((valueType) => (
+                    <option key={valueType} value={valueType}>
+                      {valueType}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  aria-label={`${port.label} formula identity`}
+                  value={port.formulaId ?? ''}
+                  onChange={(event) => updateOutputFormulaId(port.id, event.target.value)}
                 />
                 <span style={{ fontSize: '16px', color: '#64748b' }}>{port.id}</span>
                 <button type="button" onClick={() => removePort('output', port.id)}>
@@ -541,11 +691,16 @@ export const InspectorPanel = ({
                   onChange={(event) => updateBinding('input', port.id, event.target.value)}
                 >
                   <option value="">Unbound</option>
-                  {customConfig.internalGraph.nodes.map((internal) => (
+                  {customConfig.internalGraph.nodes
+                    .filter((internal) =>
+                      (internal.kind === 'income' || internal.kind === 'value') &&
+                      getNodeBindingType(internal) === (port.valueType ?? 'scalar'),
+                    )
+                    .map((internal) => (
                     <option key={internal.id} value={internal.id}>
                       {internal.label} ({internal.id})
                     </option>
-                  ))}
+                    ))}
                 </select>
               </label>
             ))}
@@ -562,11 +717,17 @@ export const InspectorPanel = ({
                   onChange={(event) => updateBinding('output', port.id, event.target.value)}
                 >
                   <option value="">Unbound</option>
-                  {customConfig.internalGraph.nodes.map((internal) => (
+                  {customConfig.internalGraph.nodes
+                    .filter((internal) =>
+                      internal.kind === 'asset'
+                        ? port.valueType === 'scalar' || port.valueType === 'timeseries'
+                        : getNodeBindingType(internal) === (port.valueType ?? 'scalar'),
+                    )
+                    .map((internal) => (
                     <option key={internal.id} value={internal.id}>
                       {internal.label} ({internal.id})
                     </option>
-                  ))}
+                    ))}
                 </select>
               </label>
             ))}
@@ -588,7 +749,13 @@ export const InspectorPanel = ({
       )}
       <div className="panel-section">
         <div className="label">Computed</div>
-        <div>{activeNode.computedValue ?? '--'}</div>
+        <div>
+          {activeNode.outputState?.kind === 'unreachable'
+            ? 'Unreachable'
+            : activeNode.outputState?.kind === 'month'
+              ? activeNode.outputState.month
+              : activeNode.computedValue ?? '--'}
+        </div>
       </div>
       <div className="panel-section">
         <button

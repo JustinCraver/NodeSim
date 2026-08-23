@@ -1,7 +1,8 @@
 # ADR 0001: Product Semantics and Document Guarantees
 
-- **Status:** Proposed — Stage 1 review gate
+- **Status:** Approved
 - **Date:** 2026-08-12
+- **Approved:** 2026-08-23 by the product owner
 - **Decision owners:** Product and engineering
 - **Scope:** Semantic contract only; no schema, parser, engine, persistence, or UI remediation is authorized by this ADR
 
@@ -19,10 +20,10 @@ root-document export guarantees. Those defects are pending test targets, not
 accepted behavior.
 
 Normative terms such as **MUST**, **MUST NOT**, and **SHOULD** below describe the
-recommended target contract. Because this ADR is still Proposed, every item in
-the review table requires approval before Stage 2 starts.
+approved target contract. The approval record below resolves every product
+decision that previously blocked Stage 2.
 
-## Proposed decision
+## Approved decision
 
 ### 1. Formula grammar
 
@@ -276,9 +277,9 @@ remains visible without leaving the suite red.
 | Export inside a custom view exports only the internal graph | Export the authoritative root document |
 | Import replaces the active graph without full validation | Validate atomically before replacement |
 
-## Product review decisions still open
+## Approved product decisions
 
-| Decision | Recommendation in this ADR | Alternatives or impact |
+| Decision | Approved choice | Alternatives or impact |
 | --- | --- | --- |
 | Leading decimal literals | Accept `.5` | Rejecting them is simpler but less familiar; either choice must be explicit |
 | Numeric precision | Adopt deterministic decimal/fixed-point money before financial-decision use | Binary floating point is simpler but needs documented tolerances and rounding |
@@ -291,9 +292,9 @@ remains visible without leaving the suite red.
 | Initial asset balance | Finite and non-negative, default zero | Signed balances would mix asset and liability semantics |
 | Unreachable output | Tagged `unreachable` | Keeping `-1` is easy but conflates data and status |
 | Multi-output syntax | `nodeId.outputId` with formula-safe stable IDs | Bracket or port syntax can preserve arbitrary IDs but complicates grammar |
-| Nested scope limit | Choose a bounded depth before Stage 5 | Unlimited recursion increases validation, UX, and recovery risk |
+| Nested scope limit | Maximum depth 8, with the root graph at depth 0 | Unlimited recursion increases validation, UX, and recovery risk |
 | Recovery retention | Current plus at least one last-known-good document | More generations improve recovery at storage/privacy cost |
-| Autosave cadence | Debounced after every valid authored transaction | Manual save is simpler but does not meet crash-recovery goals |
+| Autosave cadence | 250 ms debounce after every valid authored transaction | Manual save is simpler but does not meet crash-recovery goals |
 
 ## Consequences
 
@@ -313,9 +314,11 @@ remains visible without leaving the suite red.
   integer minor-unit policy.
 - Explicit multi-output ports add authoring and migration complexity.
 
-## Stage 1 review gate
+## Stage 1 approval record
 
-Before Stage 2 begins, product and engineering must review and record approval or
-changes for every row in **Product review decisions still open**. Approval of
-this ADR authorizes semantic direction only; it does not authorize Stage 2
-implementation. Until review is recorded, this ADR remains **Proposed**.
+On 2026-08-23 the product owner approved every recommendation in this ADR and
+explicitly authorized work to clear the blocking implementation gates. Numeric
+calculation remains finite IEEE-754 for the current prototype; deterministic
+decimal or fixed-point money remains mandatory before the product is used for
+financial-decision support. This approval closes Stage 1. Implementation and
+acceptance evidence remain separately required for each later roadmap stage.

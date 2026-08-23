@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "settings": {
+    "simulation": {
+      "version": 1,
+      "horizonMonths": 4,
+      "contributionTiming": "end-of-month",
+      "annualRateConvention": "nominal-divided-by-12",
+      "monthZero": "initial-balance"
+    }
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "flow",
+        "label": "Flow",
+        "kind": "income",
+        "baseValue": 100,
+        "timeUnit": "per_month"
+      },
+      {
+        "id": "asset",
+        "label": "Asset",
+        "kind": "asset",
+        "initialBalance": 0,
+        "interestRateAnnual": 0
+      },
+      {
+        "id": "target",
+        "label": "Target",
+        "kind": "output",
+        "targetAmount": 100
+      }
+    ],
+    "edges": [
+      {
+        "id": "flow-asset",
+        "source": "flow",
+        "target": "asset",
+        "kind": "flow",
+        "weight": 0.5,
+        "lagMonths": 2
+      },
+      {
+        "id": "asset-target",
+        "source": "asset",
+        "target": "target",
+        "kind": "flow",
+        "sourcePort": "balance",
+        "weight": 1,
+        "lagMonths": 0
+      }
+    ]
+  }
+}

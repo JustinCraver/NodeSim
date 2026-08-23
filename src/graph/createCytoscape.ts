@@ -1,11 +1,22 @@
 import cytoscape, { type Core, type NodeSingular, type StylesheetJson } from 'cytoscape';
-import type { EconEdgeData, EconNodeData, GraphComputeResult, GraphData, NodeKind } from '../models/types';
+import type {
+  EconEdgeData,
+  EconNodeData,
+  GraphComputeResult,
+  GraphData,
+  NodeKind,
+  SimulationSettingsV1,
+} from '../models/types';
 import { computeGraph } from '../engine/computeGraph';
+import { validateConnection } from '../engine/connectionValidation';
+import { DEFAULT_SIMULATION_SETTINGS } from '../document/graphDocument';
 
 type GraphCallbacks = {
   onSelectNode?: (node: EconNodeData | null) => void;
   onSelectEdge?: (edge: EconEdgeData | null) => void;
   onOpenCustomNode?: (node: EconNodeData) => void;
+  onGraphChange?: (graph: GraphData) => void;
+  onConnectionRejected?: (reason: string) => void;
 };
 
 const BASIC_NODE_OPTIONS: { kind: NodeKind; label: string }[] = [
@@ -66,12 +77,13 @@ const formatMonthlyLabel = (value?: number) => {
   return `${formatCurrency(value)} / mo`;
 };
 
-const formatOutputValue = (value?: number) => {
+const formatOutputValue = (node: EconNodeData) => {
+  if (node.outputState?.kind === 'unreachable') {
+    return 'Unreachable';
+  }
+  const value = node.outputState?.kind === 'month' ? node.outputState.month : node.computedValue;
   if (value === undefined) {
     return '--';
-  }
-  if (value < 0) {
-    return 'Unreachable';
   }
   return `${value}`;
 };
@@ -444,7 +456,7 @@ const formatNodeLabel = (node: EconNodeData, error?: string) => {
       suffix = formatCurrency(node.computedValue ?? 0);
       break;
     case 'output':
-      suffix = formatOutputValue(node.computedValue);
+      suffix = formatOutputValue(node);
       break;
     default:
       break;
@@ -518,9 +530,14 @@ const applyComputeResults = (cy: Core, result: GraphComputeResult, scale: number
   });
 };
 
-const recompute = (cy: Core, scale: number, palette: ThemePalette) => {
+const recompute = (
+  cy: Core,
+  scale: number,
+  palette: ThemePalette,
+  simulationSettings: SimulationSettingsV1,
+) => {
   const graphData = graphDataFromCy(cy, scale);
-  const result = computeGraph(graphData.nodes, graphData.edges);
+  const result = computeGraph(graphData.nodes, graphData.edges, simulationSettings);
   applyComputeResults(cy, result, scale, palette);
 };
 
@@ -731,7 +748,12 @@ const buildStyles = (palette: ThemePalette) =>
   },
   ] as unknown as StylesheetJson;
 
-export const createCytoscape = (container: HTMLDivElement, graphData: GraphData, callbacks: GraphCallbacks = {}) => {
+export const createCytoscape = (
+  container: HTMLDivElement,
+  graphData: GraphData,
+  callbacks: GraphCallbacks = {},
+  initialSimulationSettings: SimulationSettingsV1 = DEFAULT_SIMULATION_SETTINGS,
+) => {
   container.addEventListener('contextmenu', (event) => {
     event.preventDefault();
   });
@@ -756,6 +778,9 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
   });
 
   let nodeScale = Math.max(0.1, graphData.nodeScale ?? DEFAULT_NODE_SCALE);
+  let simulationSettings = { ...initialSimulationSettings };
+
+  const notifyGraphChange = () => callbacks.onGraphChange?.(graphDataFromCy(cy, nodeScale));
 
   const applyNodeScale = (scale: number) => {
     const width = scaleValue(BASE_NODE_WIDTH, scale);
@@ -795,13 +820,18 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
   };
 
   const setNodeScale = (scale: number) => {
-    nodeScale = Math.max(0.1, scale);
+    const nextScale = Math.max(0.1, scale);
+    if (Math.abs(nextScale - nodeScale) < 0.0001) {
+      return;
+    }
+    nodeScale = nextScale;
     applyNodeScale(nodeScale);
-    recompute(cy, nodeScale, themePalette);
+    recompute(cy, nodeScale, themePalette, simulationSettings);
+    notifyGraphChange();
   };
 
   applyNodeScale(nodeScale);
-  recompute(cy, nodeScale, themePalette);
+  recompute(cy, nodeScale, themePalette, simulationSettings);
 
   const updateFocusDimming = () => {
     const hasFocused = cy.nodes(':selected, .hovered').length > 0;
@@ -869,9 +899,10 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
   let edgePortMenu: HTMLDivElement | null = null;
   let pendingEdgeTarget: NodeSingular | null = null;
   let pendingEdgeSource: NodeSingular | null = null;
+  type ConnectionMenuOption = { label: string; sourcePort?: string; targetPort?: string };
 
   const createNodeAt = (position: { x: number; y: number }, kind: NodeKind) => {
-    const id = `node-${Date.now()}-${nodeSequence}`;
+    const id = `node_${Date.now()}_${nodeSequence}`;
     const label = kind === 'text' ? 'Text' : `Node ${cy.nodes().length + 1}`;
     nodeSequence += 1;
     const node: EconNodeData = {
@@ -894,14 +925,25 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       node.leftValue = 1;
       node.rightValue = 1;
     }
+    if (kind === 'calc') {
+      node.formula = '';
+      node.outputType = 'scalar';
+    }
+    if (kind === 'asset') {
+      node.initialBalance = 0;
+      node.interestRateAnnual = 0;
+    }
+    if (kind === 'output') {
+      node.targetAmount = 0;
+    }
     if (kind === 'custom') {
       const inputPortId = 'in-1';
       const outputPortId = 'out-1';
-      const internalInputId = 'internal-input';
-      const internalOutputId = 'internal-output';
+      const internalInputId = 'internal_input';
+      const internalOutputId = 'internal_output';
       node.custom = {
-        inputs: [{ id: inputPortId, label: 'Input' }],
-        outputs: [{ id: outputPortId, label: 'Output' }],
+        inputs: [{ id: inputPortId, label: 'Input', valueType: 'scalar' }],
+        outputs: [{ id: outputPortId, label: 'Output', valueType: 'scalar', formulaId: 'out_1' }],
         internalGraph: {
           nodes: [
             {
@@ -935,7 +977,8 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       data: node,
       position,
     });
-    recompute(cy, nodeScale, themePalette);
+    recompute(cy, nodeScale, themePalette, simulationSettings);
+    notifyGraphChange();
     cy.getElementById(id)?.select();
   };
 
@@ -960,7 +1003,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     renderedPosition: { x: number; y: number },
     targetNode: NodeSingular,
     title: string,
-    ports: { id: string; label: string }[],
+    options: ConnectionMenuOption[],
   ) => {
     if (!edgePortMenu) {
       const menu = document.createElement('div');
@@ -984,30 +1027,38 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     heading.textContent = title;
     menu.appendChild(heading);
 
-    ports.forEach((port) => {
+    const addConnection = (option: { sourcePort?: string; targetPort?: string }) => {
+      if (!pendingEdgeTarget || !pendingEdgeSource) {
+        return false;
+      }
+      const edgeId = `edge-${pendingEdgeSource.id()}-${pendingEdgeTarget.id()}-${Date.now()}`;
+      const candidate: EconEdgeData = {
+        id: edgeId,
+        source: pendingEdgeSource.id(),
+        target: pendingEdgeTarget.id(),
+        kind: 'flow',
+        ...(option.sourcePort ? { sourcePort: option.sourcePort } : {}),
+        ...(option.targetPort ? { targetPort: option.targetPort } : {}),
+        weight: 1,
+        lagMonths: 0,
+      };
+      const validation = validateConnection(graphDataFromCy(cy, nodeScale), candidate, simulationSettings);
+      if (!validation.valid) {
+        callbacks.onConnectionRejected?.(validation.reason);
+        return false;
+      }
+      cy.add({ group: 'edges', data: candidate });
+      recompute(cy, nodeScale, themePalette, simulationSettings);
+      notifyGraphChange();
+      return true;
+    };
+
+    options.forEach((option) => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.textContent = port.label;
+      button.textContent = option.label;
       button.addEventListener('click', () => {
-        if (!pendingEdgeTarget || !pendingEdgeSource) {
-          return;
-        }
-        if (pendingEdgeSource.id() === pendingEdgeTarget.id()) {
-          hideEdgePortMenu();
-          return;
-        }
-        const edgeId = `edge-${pendingEdgeSource.id()}-${pendingEdgeTarget.id()}-${Date.now()}`;
-        cy.add({
-          group: 'edges',
-          data: {
-            id: edgeId,
-            source: pendingEdgeSource.id(),
-            target: pendingEdgeTarget.id(),
-            targetPort: port.id,
-            kind: 'flow',
-          },
-        });
-        recompute(cy, nodeScale, themePalette);
+        addConnection(option);
         hideEdgePortMenu();
       });
       menu.appendChild(button);
@@ -1099,43 +1150,86 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       return;
     }
     const targetData = targetNode.data() as EconNodeData;
-    if (isMathKind(targetData.kind)) {
-      pendingEdgeSource = selectedNode;
-      showEdgePortMenu(event.renderedPosition, targetNode, 'Select Input', [
-        { id: '1', label: 'Input 1' },
-        { id: '2', label: 'Input 2' },
-      ]);
+    const sourceData = selectedNode.data() as EconNodeData;
+    const sourceOptions: ConnectionMenuOption[] =
+      sourceData.kind === 'custom'
+        ? (sourceData.custom?.outputs ?? []).map((port) => ({
+            sourcePort: port.id,
+            label: `${port.label} (${port.formulaId ?? port.id})`,
+          }))
+        : sourceData.kind === 'asset'
+          ? [
+              { sourcePort: 'balance', label: 'Balance series' },
+              { sourcePort: 'endingBalance', label: 'Ending balance' },
+            ]
+          : [{ label: sourceData.label }];
+    const targetOptions: ConnectionMenuOption[] = isMathKind(targetData.kind)
+      ? [
+          { targetPort: '1', label: 'Input 1' },
+          { targetPort: '2', label: 'Input 2' },
+        ]
+      : targetData.kind === 'custom'
+        ? (targetData.custom?.inputs ?? []).map((port) => ({
+            targetPort: port.id,
+            label: `${port.label} (${port.id})`,
+          }))
+        : [{ label: targetData.label }];
+    const graph = graphDataFromCy(cy, nodeScale);
+    const candidates: ConnectionMenuOption[] = sourceOptions.flatMap((sourceOption) =>
+      targetOptions.map((targetOption) => ({
+        ...sourceOption,
+        ...targetOption,
+        label:
+          sourceOptions.length > 1 || targetOptions.length > 1
+            ? `${sourceOption.label} → ${targetOption.label}`
+            : 'Create connection',
+      })),
+    );
+    const validOptions = candidates.filter((option) =>
+      validateConnection(
+        graph,
+        {
+          id: 'candidate-edge',
+          source: selectedNode.id(),
+          target: targetNode.id(),
+          kind: 'flow',
+          ...(option.sourcePort ? { sourcePort: option.sourcePort } : {}),
+          ...(option.targetPort ? { targetPort: option.targetPort } : {}),
+          weight: 1,
+          lagMonths: 0,
+        },
+        simulationSettings,
+      ).valid,
+    );
+    if (validOptions.length === 0) {
+      const first = candidates[0];
+      const validation = validateConnection(
+        graph,
+        {
+          id: 'candidate-edge',
+          source: selectedNode.id(),
+          target: targetNode.id(),
+          kind: 'flow',
+          ...(first?.sourcePort ? { sourcePort: first.sourcePort } : {}),
+          ...(first?.targetPort ? { targetPort: first.targetPort } : {}),
+          weight: 1,
+          lagMonths: 0,
+        },
+        simulationSettings,
+      );
+      callbacks.onConnectionRejected?.(validation.valid ? 'No compatible ports are available.' : validation.reason);
       return;
     }
-    if (targetData.kind === 'custom') {
-      const inputs = targetData.custom?.inputs ?? [];
-      if (inputs.length > 0) {
-        pendingEdgeSource = selectedNode;
-        showEdgePortMenu(
-          event.renderedPosition,
-          targetNode,
-          'Select Input',
-          inputs.map((port) => ({ id: port.id, label: `${port.label} (${port.id})` })),
-        );
-        return;
-      }
-    }
-    const edgeId = `edge-${selectedNode.id()}-${targetNode.id()}-${Date.now()}`;
-    cy.add({
-      group: 'edges',
-      data: {
-        id: edgeId,
-        source: selectedNode.id(),
-        target: targetNode.id(),
-        kind: 'flow',
-      },
-    });
-    recompute(cy, nodeScale, themePalette);
+    pendingEdgeSource = selectedNode;
+    pendingEdgeTarget = targetNode;
+    showEdgePortMenu(event.renderedPosition, targetNode, 'Select compatible ports', validOptions);
   });
 
   cy.on('remove add', 'edge', () => {
-    recompute(cy, nodeScale, themePalette);
+    recompute(cy, nodeScale, themePalette, simulationSettings);
   });
+
+  cy.on('dragfree', 'node', () => notifyGraphChange());
 
   const handleGlobalPointerDown = (event: PointerEvent) => {
     if (
@@ -1173,7 +1267,8 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
         ? { ...merged, ...buildTextLayout(merged.label, nodeScale) }
         : merged;
     node.data(nextData);
-    recompute(cy, nodeScale, themePalette);
+    recompute(cy, nodeScale, themePalette, simulationSettings);
+    notifyGraphChange();
   };
 
   const updateEdgeData = (edgeId: string, data: Partial<EconEdgeData>) => {
@@ -1186,17 +1281,19 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       ...current,
       ...data,
     });
-    recompute(cy, nodeScale, themePalette);
+    recompute(cy, nodeScale, themePalette, simulationSettings);
+    notifyGraphChange();
   };
 
   const importGraph = (data: GraphData) => {
     if (data.nodeScale !== undefined) {
-      setNodeScale(data.nodeScale);
+      nodeScale = Math.max(0.1, data.nodeScale);
+      applyNodeScale(nodeScale);
     }
     cy.elements().remove();
     cy.add(data.nodes.map((node) => toCyNodeElement(node)));
     cy.add(data.edges.map((edge) => ({ data: edge })));
-    recompute(cy, nodeScale, themePalette);
+    recompute(cy, nodeScale, themePalette, simulationSettings);
     const hasPositions = hasMeaningfulPositions(data.nodes);
     if (hasPositions) {
       cy.layout({ name: 'preset' }).run();
@@ -1223,7 +1320,10 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     // Remove the node itself
     node.remove();
     // Recompute after a brief delay to ensure DOM updates are complete
-    setTimeout(() => recompute(cy, nodeScale, themePalette), 0);
+    setTimeout(() => {
+      recompute(cy, nodeScale, themePalette, simulationSettings);
+      notifyGraphChange();
+    }, 0);
   };
 
   const deleteEdge = (edgeId: string) => {
@@ -1235,7 +1335,15 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       edge.unselect();
     }
     edge.remove();
-    setTimeout(() => recompute(cy, nodeScale, themePalette), 0);
+    setTimeout(() => {
+      recompute(cy, nodeScale, themePalette, simulationSettings);
+      notifyGraphChange();
+    }, 0);
+  };
+
+  const setSimulationSettings = (settings: SimulationSettingsV1) => {
+    simulationSettings = { ...settings };
+    recompute(cy, nodeScale, themePalette, simulationSettings);
   };
 
   const exportGraph = (): GraphData => graphDataFromCy(cy, nodeScale);
@@ -1248,7 +1356,7 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
       themePalette = readThemePalette();
       cy.style().fromJson(buildStyles(themePalette)).update();
       applyNodeScale(nodeScale);
-      recompute(cy, nodeScale, themePalette);
+      recompute(cy, nodeScale, themePalette, simulationSettings);
     });
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   }
@@ -1262,5 +1370,6 @@ export const createCytoscape = (container: HTMLDivElement, graphData: GraphData,
     importGraph,
     exportGraph,
     setNodeScale,
+    setSimulationSettings,
   };
 };

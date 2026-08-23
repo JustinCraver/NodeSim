@@ -13,19 +13,19 @@ const makeMultiPortFixture = (): GraphData =>
         kind: 'custom',
         custom: {
           inputs: [
-            { id: 'inGross', label: 'Gross' },
-            { id: 'inFee', label: 'Fee' },
+            { id: 'inGross', label: 'Gross', valueType: 'scalar' },
+            { id: 'inFee', label: 'Fee', valueType: 'scalar' },
           ],
           outputs: [
-            { id: 'outNet', label: 'Net' },
-            { id: 'outTotal', label: 'Total' },
+            { id: 'outNet', label: 'Net', valueType: 'scalar', formulaId: 'net' },
+            { id: 'outTotal', label: 'Total', valueType: 'scalar', formulaId: 'total' },
           ],
           internalGraph: graph(
             [
               { id: 'gross', label: 'Gross', kind: 'value', baseValue: 0 },
-              { id: 'fee', label: 'Fee', kind: 'income', baseValue: 0, timeUnit: 'per_year' },
-              { id: 'net', label: 'Net', kind: 'calc', formula: 'gross - fee' },
-              { id: 'total', label: 'Total', kind: 'calc', formula: 'gross + fee' },
+              { id: 'fee', label: 'Fee', kind: 'value', baseValue: 0 },
+              { id: 'net', label: 'Net', kind: 'calc', formula: 'gross - fee', outputType: 'scalar' },
+              { id: 'total', label: 'Total', kind: 'calc', formula: 'gross + fee', outputType: 'scalar' },
             ],
             [
               flow('gross-net', 'gross', 'net'),
@@ -56,18 +56,18 @@ const makeMultiPortFixture = (): GraphData =>
   );
 
 describe('custom node ports and bindings', () => {
-  it('binds distinct inputs, publishes distinct outputs, and sums outputs for the custom scalar', () => {
+  it('binds distinct inputs and publishes independently typed outputs without an implicit aggregate', () => {
     const result = computeFixture(makeMultiPortFixture());
 
     expect(result.errors).toEqual({});
-    expect(result.customOutputs?.get('adjuster')?.get('outNet')).toBe(7);
-    expect(result.customOutputs?.get('adjuster')?.get('outTotal')).toBe(13);
-    expect(requireNode(result, 'adjuster').computedValue).toBe(20);
+    expect(result.customOutputs.get('adjuster')?.get('outNet')).toEqual({ type: 'scalar', value: 7 });
+    expect(result.customOutputs.get('adjuster')?.get('outTotal')).toEqual({ type: 'scalar', value: 13 });
+    expect(requireNode(result, 'adjuster').computedValue).toBeUndefined();
     expect(requireNode(result, 'netSink').computedValue).toBe(7);
     expect(requireNode(result, 'totalSink').computedValue).toBe(13);
   });
 
-  it('uses the first declared input and output when edge ports are omitted', () => {
+  it('rejects omitted ports on a multi-port custom node', () => {
     const fixture = makeMultiPortFixture();
     fixture.edges = [
       flow('gross-adjuster', 'outerGross', 'adjuster'),
@@ -75,20 +75,18 @@ describe('custom node ports and bindings', () => {
     ];
     const result = computeFixture(fixture);
 
-    expect(result.errors).toEqual({});
-    expect(result.customOutputs?.get('adjuster')?.get('outNet')).toBe(10);
-    expect(result.customOutputs?.get('adjuster')?.get('outTotal')).toBe(10);
-    expect(requireNode(result, 'netSink').computedValue).toBe(10);
+    expect(result.errors.adjuster).toContain('Unknown custom input port');
+    expect(result.errors.netSink).toContain('Blocked by failed dependency');
   });
 
-  it('reports unknown ports and missing bindings without throwing', () => {
+  it('reports an unknown custom input port without throwing', () => {
     const custom: EconNodeData = {
       id: 'custom',
       label: 'Custom',
       kind: 'custom',
       custom: {
-        inputs: [{ id: 'in', label: 'In' }],
-        outputs: [{ id: 'out', label: 'Out' }],
+        inputs: [{ id: 'in', label: 'In', valueType: 'scalar' }],
+        outputs: [{ id: 'out', label: 'Out', valueType: 'scalar', formulaId: 'out' }],
         internalGraph: graph([{ id: 'internal', label: 'Internal', kind: 'value', baseValue: 5 }]),
         inputBindings: {},
         outputBindings: {},
@@ -104,10 +102,8 @@ describe('custom node ports and bindings', () => {
       ),
     );
 
-    expect(result.errors.custom).toContain('Unknown input port unknown');
-    expect(result.errors.custom).toContain('Missing input binding for in');
-    expect(result.errors.custom).toContain('Missing output binding for out');
-    expect(result.customOutputs?.get('custom')?.get('out')).toBe(0);
+    expect(result.errors.custom).toContain('Unknown custom input port: unknown');
+    expect(result.customOutputs.get('custom')).toBeUndefined();
   });
 });
 
@@ -132,8 +128,8 @@ describe('current unversioned JSON document format', () => {
     expect(roundTripped).toEqual(fixture);
     expect('version' in roundTripped).toBe(false);
     expect(roundTripped.nodes.find((node) => node.id === 'adjuster')?.custom?.outputs).toEqual([
-      { id: 'outNet', label: 'Net' },
-      { id: 'outTotal', label: 'Total' },
+      { id: 'outNet', label: 'Net', valueType: 'scalar', formulaId: 'net' },
+      { id: 'outTotal', label: 'Total', valueType: 'scalar', formulaId: 'total' },
     ]);
   });
 

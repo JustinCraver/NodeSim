@@ -25,6 +25,7 @@
     "dev:lan": "vite --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "fixtures:semantic": "vitest run tests/semanticFixtures.test.ts",
     "build": "vite build",
     "check": "npm run typecheck && npm test && npm run build",
     "preview": "vite preview"
