@@ -7,7 +7,10 @@ import type { GraphDocument } from '../models/types';
 type ToolbarProps = {
   onExport: () => GraphDocument;
   onImportText: (text: string) => string | undefined;
-  onUndoImport?: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
   nodeScale: number;
   onNodeScaleChange: (value: number) => void;
   horizonMonths: number;
@@ -23,7 +26,10 @@ type ToolbarProps = {
 export const Toolbar = ({
   onExport,
   onImportText,
-  onUndoImport,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
   nodeScale,
   onNodeScaleChange,
   horizonMonths,
@@ -100,11 +106,12 @@ export const Toolbar = ({
       <button type="button" onClick={() => fileInputRef.current?.click()}>
         Import Project JSON
       </button>
-      {onUndoImport && (
-        <button type="button" onClick={onUndoImport}>
-          Undo Import
-        </button>
-      )}
+      <button type="button" onClick={onUndo} disabled={!canUndo}>
+        Undo
+      </button>
+      <button type="button" onClick={onRedo} disabled={!canRedo}>
+        Redo
+      </button>
       <label className="toolbar-scale">
         <span>Horizon</span>
         <input

@@ -330,8 +330,10 @@ const buildOrder = (nodeIds: string[], edges: EconEdgeData[], excluded: Set<stri
   });
   const queue = included.filter((id) => inDegree.get(id) === 0);
   const order: string[] = [];
-  while (queue.length > 0) {
-    const id = queue.shift()!;
+  let queueIndex = 0;
+  while (queueIndex < queue.length) {
+    const id = queue[queueIndex];
+    queueIndex += 1;
     order.push(id);
     (outgoing.get(id) ?? []).forEach((target) => {
       const next = (inDegree.get(target) ?? 0) - 1;

@@ -11,12 +11,15 @@ import type {
 import { computeGraph } from '../engine/computeGraph';
 import { validateConnection } from '../engine/connectionValidation';
 import { DEFAULT_SIMULATION_SETTINGS } from '../document/graphDocument';
+import type { DocumentCommand, DocumentSelection } from '../document/documentStore';
+import { formatGraphPath, type GraphPath } from './graphScope';
+import { ControllerLifecycle } from './controllerLifecycle';
 
 type GraphCallbacks = {
   onSelectNode?: (node: EconNodeData | null) => void;
   onSelectEdge?: (edge: EconEdgeData | null) => void;
   onOpenCustomNode?: (node: EconNodeData) => void;
-  onGraphChange?: (graph: GraphData) => void;
+  onCommand?: (command: DocumentCommand, selection?: DocumentSelection) => void;
   onConnectionRejected?: (reason: string) => void;
   onDiagnostics?: (diagnostics: ComputeDiagnostic[]) => void;
 };
@@ -541,7 +544,7 @@ const recompute = (
 ) => {
   const graphData = graphDataFromCy(cy, scale);
   const result = computeGraph(graphData.nodes, graphData.edges, simulationSettings, graphPath);
-  applyComputeResults(cy, result, scale, palette);
+  cy.batch(() => applyComputeResults(cy, result, scale, palette));
   return result;
 };
 
@@ -758,40 +761,27 @@ export const createCytoscape = (
   callbacks: GraphCallbacks = {},
   initialSimulationSettings: SimulationSettingsV1 = DEFAULT_SIMULATION_SETTINGS,
 ) => {
-  container.addEventListener('contextmenu', (event) => {
-    event.preventDefault();
-  });
-
-  const hasInitialPositions = hasMeaningfulPositions(graphData.nodes);
   let themePalette = readThemePalette();
 
   const cy = cytoscape({
     container,
-    elements: {
-      nodes: graphData.nodes.map((node) => toCyNodeElement(node)),
-      edges: graphData.edges.map((edge) => ({ data: edge })),
-    },
+    elements: [],
     style: buildStyles(themePalette),
-    layout: hasInitialPositions
-      ? { name: 'preset' }
-      : {
-          name: 'breadthfirst',
-          directed: true,
-          spacingFactor: 1.4,
-        },
+    layout: { name: 'preset' },
   });
+  const lifecycle = new ControllerLifecycle(cy);
+  lifecycle.listen(container, 'contextmenu', (event) => event.preventDefault());
 
   let nodeScale = Math.max(0.1, graphData.nodeScale ?? DEFAULT_NODE_SCALE);
   let simulationSettings = { ...initialSimulationSettings };
-  let graphPath = '/root';
+  let graphPath: GraphPath = Object.freeze([]);
+  let isProjecting = false;
 
   const runRecompute = () => {
-    const result = recompute(cy, nodeScale, themePalette, simulationSettings, graphPath);
+    const result = recompute(cy, nodeScale, themePalette, simulationSettings, formatGraphPath(graphPath));
     callbacks.onDiagnostics?.(result.diagnostics);
     return result;
   };
-
-  const notifyGraphChange = () => callbacks.onGraphChange?.(graphDataFromCy(cy, nodeScale));
 
   const applyNodeScale = (scale: number) => {
     const width = scaleValue(BASE_NODE_WIDTH, scale);
@@ -830,19 +820,7 @@ export const createCytoscape = (
       .update();
   };
 
-  const setNodeScale = (scale: number) => {
-    const nextScale = Math.max(0.1, scale);
-    if (Math.abs(nextScale - nodeScale) < 0.0001) {
-      return;
-    }
-    nodeScale = nextScale;
-    applyNodeScale(nodeScale);
-    runRecompute();
-    notifyGraphChange();
-  };
-
   applyNodeScale(nodeScale);
-  runRecompute();
 
   const updateFocusDimming = () => {
     const hasFocused = cy.nodes(':selected, .hovered').length > 0;
@@ -855,6 +833,9 @@ export const createCytoscape = (
   };
 
   cy.on('select', 'node', (event) => {
+    if (isProjecting) {
+      return;
+    }
     cy.edges(':selected').unselect();
     const node = event.target.data() as EconNodeData;
     callbacks.onSelectNode?.({ ...node });
@@ -862,6 +843,9 @@ export const createCytoscape = (
   });
 
   cy.on('unselect', 'node', () => {
+    if (isProjecting) {
+      return;
+    }
     callbacks.onSelectNode?.(null);
     updateFocusDimming();
   });
@@ -885,6 +869,9 @@ export const createCytoscape = (
   });
 
   cy.on('select', 'edge', (event) => {
+    if (isProjecting) {
+      return;
+    }
     cy.nodes(':selected').unselect();
     const edge = event.target.data() as EconEdgeData;
     callbacks.onSelectEdge?.({ ...edge });
@@ -892,6 +879,9 @@ export const createCytoscape = (
   });
 
   cy.on('unselect', 'edge', () => {
+    if (isProjecting) {
+      return;
+    }
     callbacks.onSelectEdge?.(null);
     updateFocusDimming();
   });
@@ -983,14 +973,11 @@ export const createCytoscape = (
     if (kind === 'text') {
       Object.assign(node, buildTextLayout(label, nodeScale));
     }
-    cy.add({
-      group: 'nodes',
-      data: node,
-      position,
-    });
-    runRecompute();
-    notifyGraphChange();
-    cy.getElementById(id)?.select();
+    node.position = { ...position };
+    callbacks.onCommand?.(
+      { type: 'add-node', graphPath, node },
+      { graphPath, kind: 'node', id, focus: true },
+    );
   };
 
   const hideContextMenu = () => {
@@ -1024,6 +1011,7 @@ export const createCytoscape = (
         event.stopPropagation();
       });
       container.appendChild(menu);
+      lifecycle.ownElement(menu);
       edgePortMenu = menu;
     }
 
@@ -1058,9 +1046,10 @@ export const createCytoscape = (
         callbacks.onConnectionRejected?.(validation.reason);
         return false;
       }
-      cy.add({ group: 'edges', data: candidate });
-      runRecompute();
-      notifyGraphChange();
+      callbacks.onCommand?.(
+        { type: 'add-edge', graphPath, edge: candidate },
+        { graphPath, kind: 'edge', id: edgeId, focus: true },
+      );
       return true;
     };
 
@@ -1126,6 +1115,7 @@ export const createCytoscape = (
       menu.appendChild(dividerText);
       addSection('Text', TEXT_NODE_OPTIONS);
       container.appendChild(menu);
+      lifecycle.ownElement(menu);
       contextMenu = menu;
     }
 
@@ -1236,11 +1226,15 @@ export const createCytoscape = (
     showEdgePortMenu(event.renderedPosition, targetNode, 'Select compatible ports', validOptions);
   });
 
-  cy.on('remove add', 'edge', () => {
-    runRecompute();
+  cy.on('dragfree', 'node', (event) => {
+    const position = event.target.position();
+    callbacks.onCommand?.({
+      type: 'move-node',
+      graphPath,
+      nodeId: event.target.id(),
+      position: { x: position.x, y: position.y },
+    });
   });
-
-  cy.on('dragfree', 'node', () => notifyGraphChange());
 
   const handleGlobalPointerDown = (event: PointerEvent) => {
     if (
@@ -1260,51 +1254,27 @@ export const createCytoscape = (
     hideEdgePortMenu();
   };
 
-  document.addEventListener('pointerdown', handleGlobalPointerDown, true);
-  container.addEventListener('scroll', hideContextMenu);
+  lifecycle.listen(document, 'pointerdown', handleGlobalPointerDown as EventListener, true);
+  lifecycle.listen(container, 'scroll', hideContextMenu as EventListener);
 
-  const updateNodeData = (nodeId: string, data: Partial<EconNodeData>) => {
-    const node = cy.getElementById(nodeId);
-    if (!node) {
-      return;
-    }
-    const current = node.data() as EconNodeData;
-    const merged = {
-      ...current,
-      ...data,
-    };
-    const nextData =
-      merged.kind === 'text' && typeof merged.label === 'string'
-        ? { ...merged, ...buildTextLayout(merged.label, nodeScale) }
-        : merged;
-    node.data(nextData);
-    runRecompute();
-    notifyGraphChange();
-  };
-
-  const updateEdgeData = (edgeId: string, data: Partial<EconEdgeData>) => {
-    const edge = cy.getElementById(edgeId);
-    if (!edge) {
-      return;
-    }
-    const current = edge.data() as EconEdgeData;
-    edge.data({
-      ...current,
-      ...data,
-    });
-    runRecompute();
-    notifyGraphChange();
-  };
-
-  const importGraph = (data: GraphData, nextGraphPath = '/root') => {
-    graphPath = nextGraphPath;
+  const projectGraph = (
+    data: GraphData,
+    nextGraphPath: GraphPath = Object.freeze([]),
+    selection?: DocumentSelection,
+    nextSimulationSettings: SimulationSettingsV1 = simulationSettings,
+  ) => {
+    graphPath = Object.freeze([...nextGraphPath]);
+    simulationSettings = { ...nextSimulationSettings };
     if (data.nodeScale !== undefined) {
       nodeScale = Math.max(0.1, data.nodeScale);
       applyNodeScale(nodeScale);
     }
-    cy.elements().remove();
-    cy.add(data.nodes.map((node) => toCyNodeElement(node)));
-    cy.add(data.edges.map((edge) => ({ data: edge })));
+    isProjecting = true;
+    cy.batch(() => {
+      cy.elements().remove();
+      cy.add(data.nodes.map((node) => toCyNodeElement(node)));
+      cy.add(data.edges.map((edge) => ({ data: edge })));
+    });
     runRecompute();
     const hasPositions = hasMeaningfulPositions(data.nodes);
     if (hasPositions) {
@@ -1315,53 +1285,28 @@ export const createCytoscape = (
     if (data.nodes.length > 0) {
       cy.fit(undefined, 40);
     }
-  };
-
-  const deleteNode = (nodeId: string) => {
-    const node = cy.getElementById(nodeId);
-    if (!node) {
-      return;
+    let selectedElement: ReturnType<typeof cy.getElementById> | undefined;
+    if (selection && selection.graphPath.length === graphPath.length && selection.graphPath.every((part, index) => part === graphPath[index])) {
+      const element = cy.getElementById(selection.id);
+      if (element && !element.empty()) {
+        element.select();
+        selectedElement = element;
+      }
     }
-    // Unselect the specific node if it's selected
-    if (node.selected()) {
-      node.unselect();
+    isProjecting = false;
+    if (selection?.focus && selectedElement) {
+      cy.animate(
+        { center: { eles: selectedElement }, zoom: Math.max(cy.zoom(), 0.75) },
+        { duration: 220 },
+      );
     }
-    // Remove all edges connected to this node
-    const connectedEdges = cy.edges(`[source = "${nodeId}"], [target = "${nodeId}"]`);
-    connectedEdges.remove();
-    // Remove the node itself
-    node.remove();
-    // Recompute after a brief delay to ensure DOM updates are complete
-    setTimeout(() => {
-      runRecompute();
-      notifyGraphChange();
-    }, 0);
   };
-
-  const deleteEdge = (edgeId: string) => {
-    const edge = cy.getElementById(edgeId);
-    if (!edge) {
-      return;
-    }
-    if (edge.selected()) {
-      edge.unselect();
-    }
-    edge.remove();
-    setTimeout(() => {
-      runRecompute();
-      notifyGraphChange();
-    }, 0);
-  };
-
-  const setSimulationSettings = (settings: SimulationSettingsV1) => {
-    simulationSettings = { ...settings };
-    runRecompute();
-  };
-
-  const exportGraph = (): GraphData => graphDataFromCy(cy, nodeScale);
 
   if (typeof MutationObserver !== 'undefined') {
     const observer = new MutationObserver((mutations) => {
+      if (lifecycle.isDestroyed()) {
+        return;
+      }
       if (!mutations.some((mutation) => mutation.type === 'attributes' && mutation.attributeName === 'data-theme')) {
         return;
       }
@@ -1371,17 +1316,21 @@ export const createCytoscape = (
       runRecompute();
     });
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    lifecycle.observe(observer);
   }
+
+  const destroy = () => {
+    lifecycle.destroy();
+    contextMenu = null;
+    edgePortMenu = null;
+    pendingCreatePosition = null;
+    pendingEdgeSource = null;
+    pendingEdgeTarget = null;
+  };
 
   return {
     cy,
-    updateNodeData,
-    updateEdgeData,
-    deleteNode,
-    deleteEdge,
-    importGraph,
-    exportGraph,
-    setNodeScale,
-    setSimulationSettings,
+    projectGraph,
+    destroy,
   };
 };

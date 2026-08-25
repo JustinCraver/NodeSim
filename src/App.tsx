@@ -18,7 +18,12 @@ import { createCytoscape } from './graph/createCytoscape';
 import { validateConnection } from './engine/connectionValidation';
 import { GraphDocumentStorage } from './document/documentStorage';
 import {
-  createGraphDocument,
+  GraphDocumentStore,
+  type DocumentCommand,
+  type DocumentSelection,
+  type DocumentStoreSnapshot,
+} from './document/documentStore';
+import {
   graphDocumentToRuntimeGraph,
   MAX_HORIZON_MONTHS,
   migrateGraphDocument,
@@ -31,8 +36,7 @@ import {
   currentGraphPath,
   formatGraphPath,
   getGraphAtPath,
-  leaveGraphView,
-  mergeViewStackToRoot,
+  graphPathsEqual,
   scopedNodeKey,
   type GraphViewFrame,
   type ScopedNodeIdentity,
@@ -350,12 +354,15 @@ const getInitialTheme = (): 'light' | 'dark' => {
 export const App = () => {
   const [initialDocumentState] = useState<InitialDocumentState>(loadInitialDocument);
   const initialGraphRef = useRef<GraphData>(graphDocumentToRuntimeGraph(initialDocumentState.document));
+  const storeRef = useRef<GraphDocumentStore>(new GraphDocumentStore(initialDocumentState.document));
+  const [storeSnapshot, setStoreSnapshot] = useState<DocumentStoreSnapshot>(storeRef.current.getSnapshot());
   const storageRef = useRef<GraphDocumentStorage | null>(
     typeof window === 'undefined' ? null : new GraphDocumentStorage(window.localStorage),
   );
-  const previousImportRef = useRef<GraphDocument | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<GraphController | null>(null);
+  const animationFramesRef = useRef<Set<number>>(new Set());
+  const projectedRevisionRef = useRef(storeSnapshot.revision);
   const { width: workspaceWidth, containerRef: workspaceContainerRef, mounted: isWorkspaceMounted } = useContainerWidth();
   const [selectedNode, setSelectedNode] = useState<EconNodeData | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<EconEdgeData | null>(null);
@@ -365,7 +372,6 @@ export const App = () => {
   );
   const [documentStatus, setDocumentStatus] = useState(initialDocumentState.status);
   const [isDocumentDirty, setIsDocumentDirty] = useState(false);
-  const [canUndoImport, setCanUndoImport] = useState(false);
   const [viewStack, setViewStack] = useState<GraphViewFrame[]>([]);
   const viewStackRef = useRef<GraphViewFrame[]>([]);
   const [selectedIdentity, setSelectedIdentity] = useState<ScopedNodeIdentity | undefined>();
@@ -375,10 +381,21 @@ export const App = () => {
   const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
   const [workspaceState, setWorkspaceState] = useState<WorkspaceState>(loadWorkspaceState);
 
-  const scheduleGraphResize = useCallback(() => {
-    window.requestAnimationFrame(() => {
-      controllerRef.current?.cy.resize();
+  const scheduleFrame = useCallback((callback: () => void) => {
+    const frame = window.requestAnimationFrame(() => {
+      animationFramesRef.current.delete(frame);
+      callback();
     });
+    animationFramesRef.current.add(frame);
+    return frame;
+  }, []);
+  const scheduleGraphResize = useCallback(() => {
+    scheduleFrame(() => controllerRef.current?.cy.resize());
+  }, [scheduleFrame]);
+
+  useEffect(() => () => {
+    animationFramesRef.current.forEach((frame) => window.cancelAnimationFrame(frame));
+    animationFramesRef.current.clear();
   }, []);
   const setWorkspaceHostRef = useCallback(
     (element: HTMLDivElement | null) => {
@@ -387,25 +404,20 @@ export const App = () => {
     [workspaceContainerRef],
   );
 
-  const refreshGraphSnapshot = () => {
-    const controller = controllerRef.current;
-    if (!controller) {
-      return;
+  const executeCommand = (command: DocumentCommand, selection?: DocumentSelection | null) => {
+    try {
+      if (selection === null) {
+        storeRef.current.execute(command, undefined);
+      } else if (selection) {
+        storeRef.current.execute(command, selection);
+      } else {
+        storeRef.current.execute(command);
+      }
+      return true;
+    } catch (error) {
+      setDocumentStatus(error instanceof Error ? error.message : 'Command rejected');
+      return false;
     }
-    const currentGraph = controller.exportGraph();
-    setGraphSnapshot(mergeViewStackToRoot(viewStackRef.current, currentGraph));
-  };
-
-  const handleAuthoredGraphChange = (currentGraph: GraphData) => {
-    const rootGraph = mergeViewStackToRoot(viewStackRef.current, currentGraph);
-    setGraphSnapshot(rootGraph);
-    setIsDocumentDirty(true);
-    setDocumentStatus('Unsaved changes');
-  };
-
-  const getCurrentRootGraph = () => {
-    const currentGraph = controllerRef.current?.exportGraph() ?? graphSnapshot;
-    return mergeViewStackToRoot(viewStackRef.current, currentGraph);
   };
 
   const selectNode = (nodeId: string) => {
@@ -449,8 +461,9 @@ export const App = () => {
     if (!controller) {
       return false;
     }
-    const parentGraph = controller.exportGraph();
+    const rootGraph = graphDocumentToRuntimeGraph(storeRef.current.getSnapshot().document);
     const parentPath = currentGraphPath(viewStackRef.current);
+    const parentGraph = getGraphAtPath(rootGraph, parentPath);
     const frame: GraphViewFrame = Object.freeze({
       parentPath,
       parentGraph,
@@ -461,8 +474,13 @@ export const App = () => {
     viewStackRef.current = nextStack;
     setViewStack(nextStack);
     const nextPath = appendGraphPath(parentPath, node.id);
-    controller.importGraph(node.custom.internalGraph, formatGraphPath(nextPath));
-    const rootGraph = mergeViewStackToRoot(nextStack, node.custom.internalGraph);
+    storeRef.current.setSelection(undefined);
+    controller.projectGraph(
+      getGraphAtPath(rootGraph, nextPath),
+      nextPath,
+      undefined,
+      storeRef.current.getSnapshot().document.settings.simulation,
+    );
     setGraphSnapshot(rootGraph);
     setSelectedNode(null);
     setSelectedEdge(null);
@@ -482,27 +500,99 @@ export const App = () => {
       onSelectNode: (node) => {
         setSelectedNode(node);
         if (node) {
-          setSelectedIdentity(
-            Object.freeze({ graphPath: currentGraphPath(viewStackRef.current), nodeId: node.id }),
-          );
+          const path = currentGraphPath(viewStackRef.current);
+          setSelectedIdentity(Object.freeze({ graphPath: path, nodeId: node.id }));
           setSelectedEdge(null);
-          window.requestAnimationFrame(refreshGraphSnapshot);
+          storeRef.current.setSelection({ graphPath: path, kind: 'node', id: node.id, focus: true });
         } else {
           setSelectedIdentity(undefined);
+          if (storeRef.current.getSnapshot().selection?.kind === 'node') {
+            storeRef.current.setSelection(undefined);
+          }
         }
       },
       onSelectEdge: (edge) => {
         setSelectedEdge(edge);
         if (edge) {
           setSelectedNode(null);
+          setSelectedIdentity(undefined);
+          const path = currentGraphPath(viewStackRef.current);
+          storeRef.current.setSelection({ graphPath: path, kind: 'edge', id: edge.id, focus: true });
+        } else if (storeRef.current.getSnapshot().selection?.kind === 'edge') {
+          storeRef.current.setSelection(undefined);
         }
       },
       onOpenCustomNode: handleOpenCustomNode,
-      onGraphChange: handleAuthoredGraphChange,
+      onCommand: executeCommand,
       onConnectionRejected: (reason) => setDocumentStatus(`Connection rejected: ${reason}`),
       onDiagnostics: setDiagnostics,
     }, simulationSettings);
+    const projectSnapshot = (snapshot: DocumentStoreSnapshot) => {
+      const rootGraph = graphDocumentToRuntimeGraph(snapshot.document);
+      let path = currentGraphPath(viewStackRef.current);
+      if (snapshot.selection && !graphPathsEqual(snapshot.selection.graphPath, path)) {
+        try {
+          const nextStack = buildViewStack(rootGraph, snapshot.selection.graphPath);
+          path = snapshot.selection.graphPath;
+          viewStackRef.current = nextStack;
+          setViewStack(nextStack);
+        } catch {
+          path = Object.freeze([]);
+          viewStackRef.current = [];
+          setViewStack([]);
+        }
+      }
+      let activeGraph: GraphData;
+      try {
+        activeGraph = getGraphAtPath(rootGraph, path);
+      } catch {
+        path = Object.freeze([]);
+        viewStackRef.current = [];
+        setViewStack([]);
+        activeGraph = rootGraph;
+      }
+      controllerRef.current?.projectGraph(
+        activeGraph,
+        path,
+        snapshot.selection,
+        snapshot.document.settings.simulation,
+      );
+      setGraphSnapshot(rootGraph);
+      setNodeScale(rootGraph.nodeScale ?? DEFAULT_NODE_SCALE);
+      setSimulationSettings(snapshot.document.settings.simulation);
+      if (snapshot.selection?.kind === 'node' && graphPathsEqual(snapshot.selection.graphPath, path)) {
+        const data = controllerRef.current?.cy.getElementById(snapshot.selection.id)?.data() as EconNodeData | undefined;
+        setSelectedNode(data ? { ...data } : null);
+        setSelectedEdge(null);
+        setSelectedIdentity(Object.freeze({ graphPath: path, nodeId: snapshot.selection.id }));
+      } else if (snapshot.selection?.kind === 'edge' && graphPathsEqual(snapshot.selection.graphPath, path)) {
+        const data = controllerRef.current?.cy.getElementById(snapshot.selection.id)?.data() as EconEdgeData | undefined;
+        setSelectedEdge(data ? { ...data } : null);
+        setSelectedNode(null);
+        setSelectedIdentity(undefined);
+      } else {
+        setSelectedNode(null);
+        setSelectedEdge(null);
+        setSelectedIdentity(undefined);
+      }
+    };
+    projectSnapshot(storeRef.current.getSnapshot());
+    const unsubscribe = storeRef.current.subscribe((snapshot) => {
+      setStoreSnapshot(snapshot);
+      if (snapshot.revision !== projectedRevisionRef.current) {
+        projectedRevisionRef.current = snapshot.revision;
+        projectSnapshot(snapshot);
+        setIsDocumentDirty(true);
+        setDocumentStatus('Unsaved changes');
+      }
+    });
     scheduleGraphResize();
+    return () => {
+      unsubscribe();
+      const controller = controllerRef.current;
+      controllerRef.current = null;
+      controller?.destroy();
+    };
   }, [isWorkspaceMounted, scheduleGraphResize]);
 
   useEffect(() => {
@@ -519,8 +609,7 @@ export const App = () => {
     }
     const timeout = window.setTimeout(() => {
       try {
-        const document = createGraphDocument(graphSnapshot, simulationSettings);
-        const revision = storageRef.current?.save(document);
+        const revision = storageRef.current?.save(storeSnapshot.document);
         setIsDocumentDirty(false);
         setDocumentStatus(revision ? `Saved revision ${revision}` : 'Document validated');
       } catch (error) {
@@ -528,62 +617,40 @@ export const App = () => {
       }
     }, AUTOSAVE_DEBOUNCE_MS);
     return () => window.clearTimeout(timeout);
-  }, [graphSnapshot, isDocumentDirty, simulationSettings]);
-
-  useEffect(() => {
-    const controller = controllerRef.current;
-    if (!controller) {
-      return;
-    }
-    controller.setNodeScale(nodeScale);
-  }, [nodeScale]);
-
-  useEffect(() => {
-    const controller = controllerRef.current;
-    if (!controller) {
-      return;
-    }
-    controller.setSimulationSettings(simulationSettings);
-    const selected = controller.cy.nodes(':selected').first();
-    if (selected && !selected.empty()) {
-      setSelectedNode({ ...(selected.data() as EconNodeData) });
-    }
-    refreshGraphSnapshot();
-  }, [simulationSettings]);
+  }, [isDocumentDirty, storeSnapshot.document]);
 
   const handleNodeChange = (nodeId: string, data: Partial<EconNodeData>) => {
-    const controller = controllerRef.current;
-    if (!controller) {
+    const path = currentGraphPath(viewStackRef.current);
+    const root = graphDocumentToRuntimeGraph(storeRef.current.getSnapshot().document);
+    const current = getGraphAtPath(root, path).nodes.find((node) => node.id === nodeId);
+    if (!current) {
       return;
     }
-    controller.updateNodeData(nodeId, data);
-    const updated = controller.cy.getElementById(nodeId)?.data() as EconNodeData | undefined;
-    if (updated) {
-      setSelectedNode({ ...updated });
+    const selection: DocumentSelection = { graphPath: path, kind: 'node', id: nodeId, focus: true };
+    if (data.kind && data.kind !== current.kind) {
+      executeCommand({ type: 'change-node-type', graphPath: path, nodeId, changes: data }, selection);
+      return;
     }
-    refreshGraphSnapshot();
+    if (data.custom && current.kind === 'custom' && current.custom) {
+      if (JSON.stringify(data.custom.internalGraph) !== JSON.stringify(current.custom.internalGraph)) {
+        executeCommand(
+          { type: 'replace-nested-graph', graphPath: appendGraphPath(path, nodeId), graph: data.custom.internalGraph },
+          selection,
+        );
+      } else {
+        executeCommand({ type: 'update-custom-ports', graphPath: path, nodeId, custom: data.custom }, selection);
+      }
+      return;
+    }
+    executeCommand({ type: 'update-node', graphPath: path, nodeId, changes: data }, selection);
   };
 
   const handleNodeDelete = (nodeId: string) => {
-    const controller = controllerRef.current;
-    if (!controller) {
-      return;
-    }
-    // Clear selection first to prevent any race conditions
-    setSelectedNode(null);
-    setSelectedEdge(null);
-    controller.deleteNode(nodeId);
-    window.requestAnimationFrame(refreshGraphSnapshot);
+    executeCommand({ type: 'delete-node', graphPath: currentGraphPath(viewStackRef.current), nodeId }, null);
   };
 
   const handleEdgeDelete = (edgeId: string) => {
-    const controller = controllerRef.current;
-    if (!controller) {
-      return;
-    }
-    setSelectedEdge(null);
-    controller.deleteEdge(edgeId);
-    window.requestAnimationFrame(refreshGraphSnapshot);
+    executeCommand({ type: 'delete-edge', graphPath: currentGraphPath(viewStackRef.current), edgeId }, null);
   };
 
   const navigateToDepth = (targetDepth: number, shouldFocusNode = true) => {
@@ -591,28 +658,35 @@ export const App = () => {
     if (!controller || targetDepth < 0 || targetDepth >= viewStackRef.current.length) {
       return;
     }
-    let currentGraph = controller.exportGraph();
-    let nextStack = [...viewStackRef.current];
-    let nextSelection: ScopedNodeIdentity | undefined;
-    while (nextStack.length > targetDepth) {
-      const parent = leaveGraphView(nextStack, currentGraph);
-      currentGraph = parent.graph;
-      nextStack = parent.stack;
-      nextSelection = parent.selection;
-    }
+    const rootGraph = graphDocumentToRuntimeGraph(storeRef.current.getSnapshot().document);
+    const previousStack = viewStackRef.current;
+    const nextStack = previousStack.slice(0, targetDepth);
+    const leavingFrame = previousStack[targetDepth];
+    const nextSelection: ScopedNodeIdentity | undefined = leavingFrame
+      ? Object.freeze({ graphPath: leavingFrame.parentPath, nodeId: leavingFrame.customNodeId })
+      : undefined;
     viewStackRef.current = nextStack;
     setViewStack(nextStack);
     const nextPath = currentGraphPath(nextStack);
-    controller.importGraph(currentGraph, formatGraphPath(nextPath));
+    const currentGraph = getGraphAtPath(rootGraph, nextPath);
+    controller.projectGraph(
+      currentGraph,
+      nextPath,
+      nextSelection ? { ...nextSelection, kind: 'node', id: nextSelection.nodeId, focus: shouldFocusNode } : undefined,
+      storeRef.current.getSnapshot().document.settings.simulation,
+    );
     const updatedCustom = nextSelection
       ? currentGraph.nodes.find((node) => node.id === nextSelection.nodeId) ?? null
       : null;
     setSelectedNode(updatedCustom ? { ...updatedCustom } : null);
     setSelectedEdge(null);
     setSelectedIdentity(nextSelection);
-    setGraphSnapshot(mergeViewStackToRoot(nextStack, currentGraph));
+    setGraphSnapshot(rootGraph);
+    storeRef.current.setSelection(
+      nextSelection ? { graphPath: nextSelection.graphPath, kind: 'node', id: nextSelection.nodeId, focus: shouldFocusNode } : undefined,
+    );
     if (shouldFocusNode && nextSelection) {
-      window.requestAnimationFrame(() => focusNode(nextSelection!.nodeId));
+      scheduleFrame(() => focusNode(nextSelection.nodeId));
     }
   };
 
@@ -623,7 +697,11 @@ export const App = () => {
     if (!controller) {
       return;
     }
-    const currentGraph = controller.exportGraph();
+    const path = currentGraphPath(viewStackRef.current);
+    const currentGraph = getGraphAtPath(
+      graphDocumentToRuntimeGraph(storeRef.current.getSnapshot().document),
+      path,
+    );
     const currentEdge = currentGraph.edges.find((edge) => edge.id === edgeId);
     if (!currentEdge) {
       return;
@@ -638,12 +716,10 @@ export const App = () => {
       setDocumentStatus(`Connection rejected: ${validation.reason}`);
       return;
     }
-    controller.updateEdgeData(edgeId, data);
-    const updated = controller.cy.getElementById(edgeId)?.data() as EconEdgeData | undefined;
-    if (updated) {
-      setSelectedEdge({ ...updated });
-    }
-    refreshGraphSnapshot();
+    executeCommand(
+      { type: 'update-edge', graphPath: path, edgeId, changes: data },
+      { graphPath: path, kind: 'edge', id: edgeId, focus: true },
+    );
   };
 
   const getNodeById = (nodeId: string) => {
@@ -655,56 +731,28 @@ export const App = () => {
     return data ? { ...data } : null;
   };
 
-  const applyImportedDocument = (document: GraphDocument) => {
-    const data = graphDocumentToRuntimeGraph(document);
-    viewStackRef.current = [];
-    setViewStack([]);
-    setSelectedNode(null);
-    setSelectedEdge(null);
-    setSelectedIdentity(undefined);
-    if (data.nodeScale !== undefined) {
-      setNodeScale(data.nodeScale);
-    }
-    setSimulationSettings(document.settings.simulation);
-    controllerRef.current?.setSimulationSettings(document.settings.simulation);
-    controllerRef.current?.importGraph(data, '/root');
-    setGraphSnapshot(data);
-    setIsDocumentDirty(true);
-    setDocumentStatus('Imported document validated; saving');
-  };
-
-  const handleExport = () => createGraphDocument(getCurrentRootGraph(), simulationSettings);
+  const handleExport = () => storeRef.current.getSnapshot().document;
 
   const handleImportText = (text: string) => {
     try {
       const candidate = parseGraphDocumentText(text);
-      previousImportRef.current = handleExport();
       storageRef.current?.rememberLegacyImport(text);
-      applyImportedDocument(candidate);
-      setCanUndoImport(true);
+      executeCommand({ type: 'replace-document', document: candidate }, null);
       return undefined;
     } catch (error) {
       return error instanceof Error ? error.message : 'Import validation failed.';
     }
   };
 
-  const handleUndoImport = () => {
-    const previous = previousImportRef.current;
-    if (!previous) {
-      return;
-    }
-    applyImportedDocument(previous);
-    previousImportRef.current = null;
-    setCanUndoImport(false);
-    setDocumentStatus('Import undone; saving restored document');
-  };
+  const handleUndo = () => storeRef.current.undo();
+  const handleRedo = () => storeRef.current.redo();
 
   const handleHierarchySelectNode = (identity: ScopedNodeIdentity) => {
     const controller = controllerRef.current;
     if (!controller) {
       return;
     }
-    const rootGraph = getCurrentRootGraph();
+    const rootGraph = graphDocumentToRuntimeGraph(storeRef.current.getSnapshot().document);
     const nextStack = buildViewStack(rootGraph, identity.graphPath);
     const targetGraph = getGraphAtPath(rootGraph, identity.graphPath);
     viewStackRef.current = nextStack;
@@ -713,8 +761,20 @@ export const App = () => {
     setSelectedNode(null);
     setSelectedEdge(null);
     setSelectedIdentity(undefined);
-    controller.importGraph(targetGraph, formatGraphPath(identity.graphPath));
-    window.requestAnimationFrame(() => {
+    const selection: DocumentSelection = {
+      graphPath: identity.graphPath,
+      kind: 'node',
+      id: identity.nodeId,
+      focus: isHierarchyFocusEnabled,
+    };
+    controller.projectGraph(
+      targetGraph,
+      identity.graphPath,
+      selection,
+      storeRef.current.getSnapshot().document.settings.simulation,
+    );
+    storeRef.current.setSelection(selection);
+    scheduleFrame(() => {
       const didSelect = isHierarchyFocusEnabled ? focusNode(identity.nodeId) : selectNode(identity.nodeId);
       if (!didSelect) {
         return;
@@ -724,6 +784,31 @@ export const App = () => {
       setSelectedIdentity(identity);
     });
   };
+
+  useEffect(() => {
+    const handleHistoryKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) {
+        return;
+      }
+      if (event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      } else if (event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        handleRedo();
+      }
+    };
+    document.addEventListener('keydown', handleHistoryKey);
+    return () => document.removeEventListener('keydown', handleHistoryKey);
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -794,18 +879,24 @@ export const App = () => {
             <Toolbar
               onExport={handleExport}
               onImportText={handleImportText}
-              onUndoImport={canUndoImport ? handleUndoImport : undefined}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
+              canUndo={storeSnapshot.canUndo}
+              canRedo={storeSnapshot.canRedo}
               nodeScale={displayNodeScale}
-              onNodeScaleChange={(value) => setNodeScale(value * DEFAULT_NODE_SCALE)}
+              onNodeScaleChange={(value) =>
+                executeCommand({ type: 'set-node-scale', nodeScale: value * DEFAULT_NODE_SCALE })
+              }
               horizonMonths={simulationSettings.horizonMonths}
               onHorizonMonthsChange={(value) => {
                 if (!Number.isInteger(value) || value < 1 || value > MAX_HORIZON_MONTHS) {
                   setDocumentStatus(`Horizon must be a whole number from 1 to ${MAX_HORIZON_MONTHS}.`);
                   return;
                 }
-                setSimulationSettings((current) => ({ ...current, horizonMonths: value }));
-                setIsDocumentDirty(true);
-                setDocumentStatus('Unsaved changes');
+                executeCommand({
+                  type: 'set-simulation-settings',
+                  settings: { ...simulationSettings, horizonMonths: value },
+                });
               }}
               documentStatus={documentStatus}
               breadcrumbs={breadcrumbs}

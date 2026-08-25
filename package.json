@@ -26,6 +26,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "fixtures:semantic": "vitest run tests/semanticFixtures.test.ts",
+    "benchmark:large-graph": "vitest run tests/largeGraphBenchmark.test.ts --reporter=verbose",
     "build": "vite build",
     "check": "npm run typecheck && npm test && npm run build",
     "preview": "vite preview"
