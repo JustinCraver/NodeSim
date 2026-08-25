@@ -1,6 +1,7 @@
 import type React from 'react';
 import { useRef, useState } from 'react';
 import { MAX_HORIZON_MONTHS, MAX_IMPORT_BYTES } from '../document/graphDocument';
+import type { GraphBreadcrumb } from '../graph/graphScope';
 import type { GraphDocument } from '../models/types';
 
 type ToolbarProps = {
@@ -12,8 +13,9 @@ type ToolbarProps = {
   horizonMonths: number;
   onHorizonMonthsChange: (value: number) => void;
   documentStatus: string;
-  isCustomView?: boolean;
-  onExitCustomView?: () => void;
+  breadcrumbs: readonly GraphBreadcrumb[];
+  onNavigateBreadcrumb: (depth: number) => void;
+  onBack?: () => void;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
 };
@@ -27,8 +29,9 @@ export const Toolbar = ({
   horizonMonths,
   onHorizonMonthsChange,
   documentStatus,
-  isCustomView,
-  onExitCustomView,
+  breadcrumbs,
+  onNavigateBreadcrumb,
+  onBack,
   theme,
   onToggleTheme,
 }: ToolbarProps) => {
@@ -71,11 +74,26 @@ export const Toolbar = ({
 
   return (
     <div className="toolbar">
-      {isCustomView && (
-        <button type="button" onClick={onExitCustomView}>
-          Back to Main Graph
+      {onBack && (
+        <button type="button" onClick={onBack}>
+          Back One Level
         </button>
       )}
+      <nav className="graph-breadcrumbs" aria-label="Graph path">
+        {breadcrumbs.map((breadcrumb, index) => (
+          <span key={JSON.stringify(breadcrumb.graphPath)}>
+            {index > 0 && <span aria-hidden="true"> / </span>}
+            <button
+              type="button"
+              aria-current={index === breadcrumbs.length - 1 ? 'location' : undefined}
+              disabled={index === breadcrumbs.length - 1}
+              onClick={() => onNavigateBreadcrumb(index)}
+            >
+              {breadcrumb.label}
+            </button>
+          </span>
+        ))}
+      </nav>
       <button type="button" onClick={handleExport}>
         Export Project JSON
       </button>

@@ -7,7 +7,7 @@ import ReactGridLayout, {
   type ResizeHandleAxis,
 } from 'react-grid-layout';
 import type {
-  CustomNodeConfig,
+  ComputeDiagnostic,
   EconEdgeData,
   EconNodeData,
   GraphData,
@@ -21,10 +21,22 @@ import {
   createGraphDocument,
   graphDocumentToRuntimeGraph,
   MAX_HORIZON_MONTHS,
-  mergeCustomGraphIntoRoot,
   migrateGraphDocument,
   parseGraphDocumentText,
 } from './document/graphDocument';
+import {
+  appendGraphPath,
+  buildBreadcrumbs,
+  buildViewStack,
+  currentGraphPath,
+  formatGraphPath,
+  getGraphAtPath,
+  leaveGraphView,
+  mergeViewStackToRoot,
+  scopedNodeKey,
+  type GraphViewFrame,
+  type ScopedNodeIdentity,
+} from './graph/graphScope';
 import { HierarchyPanel } from './ui/HierarchyPanel';
 import { InspectorPanel } from './ui/InspectorPanel';
 import { Toolbar } from './ui/Toolbar';
@@ -89,11 +101,6 @@ type WorkspaceState = {
   panels: PanelInstance[];
   layout: LayoutItem[];
 };
-type CustomViewState = {
-  parentGraph: GraphData;
-  customNodeId: string;
-};
-
 type InitialDocumentState = {
   document: GraphDocument;
   status: string;
@@ -340,140 +347,6 @@ const getInitialTheme = (): 'light' | 'dark' => {
   return 'light';
 };
 
-const ensureCustomPorts = (custom: CustomNodeConfig) => {
-  const internalGraph = {
-    nodes: custom.internalGraph.nodes.map((node) => ({ ...node })),
-    edges: custom.internalGraph.edges.map((edge) => ({ ...edge })),
-    nodeScale: custom.internalGraph.nodeScale,
-  };
-  const inputBindings = { ...custom.inputBindings };
-  const outputBindings = { ...custom.outputBindings };
-  const nodeIds = new Set(internalGraph.nodes.map((node) => node.id));
-  const nodeMap = new Map(internalGraph.nodes.map((node) => [node.id, node]));
-  let changed = false;
-  const usedFormulaIds = new Set<string>();
-  const inputs = custom.inputs.map((port) => {
-    if (port.valueType) {
-      return port;
-    }
-    changed = true;
-    return { ...port, valueType: 'scalar' as const };
-  });
-  const outputs = custom.outputs.map((port, index) => {
-    let formulaId = port.formulaId?.replace(/[^A-Za-z0-9_]/g, '_') ?? port.id.replace(/[^A-Za-z0-9_]/g, '_');
-    if (!/^[A-Za-z_]/.test(formulaId)) {
-      formulaId = `output_${index + 1}`;
-    }
-    const base = formulaId;
-    let sequence = 2;
-    while (usedFormulaIds.has(formulaId)) {
-      formulaId = `${base}_${sequence}`;
-      sequence += 1;
-    }
-    usedFormulaIds.add(formulaId);
-    const valueType = port.valueType ?? 'scalar';
-    if (port.formulaId !== formulaId || port.valueType !== valueType) {
-      changed = true;
-      return { ...port, valueType, formulaId };
-    }
-    return port;
-  });
-
-  const createValueNode = (id: string, label: string) => {
-    const node = {
-      id,
-      label,
-      kind: 'value' as const,
-      baseValue: 0,
-    };
-    internalGraph.nodes.push(node);
-    nodeIds.add(id);
-    nodeMap.set(id, node);
-    changed = true;
-  };
-
-  const getAvailableId = (baseId: string) => {
-    let candidate = baseId;
-    let index = 1;
-    while (nodeIds.has(candidate)) {
-      candidate = `${baseId}-${index}`;
-      index += 1;
-    }
-    return candidate;
-  };
-
-  inputs.forEach((port, index) => {
-    const label = port.label || `Input ${index + 1}`;
-    const boundId = inputBindings[port.id];
-    const boundNode = boundId ? nodeMap.get(boundId) : undefined;
-    const boundValid = boundNode && (boundNode.kind === 'income' || boundNode.kind === 'value');
-
-    if (boundValid) {
-      return;
-    }
-
-    if (boundId && !boundNode) {
-      createValueNode(boundId, label);
-      inputBindings[port.id] = boundId;
-      return;
-    }
-
-    const defaultId = `input-${port.id}`;
-    if (defaultId !== boundId && nodeMap.has(defaultId)) {
-      const defaultNode = nodeMap.get(defaultId);
-      if (defaultNode && (defaultNode.kind === 'income' || defaultNode.kind === 'value')) {
-        inputBindings[port.id] = defaultId;
-        changed = true;
-        return;
-      }
-    }
-
-    const nextId = getAvailableId(defaultId);
-    createValueNode(nextId, label);
-    inputBindings[port.id] = nextId;
-  });
-
-  outputs.forEach((port, index) => {
-    const label = port.label || `Output ${index + 1}`;
-    const boundId = outputBindings[port.id];
-    const boundNode = boundId ? nodeMap.get(boundId) : undefined;
-
-    if (boundNode) {
-      return;
-    }
-
-    if (boundId && !boundNode) {
-      createValueNode(boundId, label);
-      outputBindings[port.id] = boundId;
-      return;
-    }
-
-    const defaultId = `output-${port.id}`;
-    if (defaultId !== boundId && nodeMap.has(defaultId)) {
-      outputBindings[port.id] = defaultId;
-      changed = true;
-      return;
-    }
-
-    const nextId = getAvailableId(defaultId);
-    createValueNode(nextId, label);
-    outputBindings[port.id] = nextId;
-  });
-
-  if (!changed) {
-    return custom;
-  }
-
-  return {
-    ...custom,
-    inputs,
-    outputs,
-    internalGraph,
-    inputBindings,
-    outputBindings,
-  };
-};
-
 export const App = () => {
   const [initialDocumentState] = useState<InitialDocumentState>(loadInitialDocument);
   const initialGraphRef = useRef<GraphData>(graphDocumentToRuntimeGraph(initialDocumentState.document));
@@ -493,8 +366,10 @@ export const App = () => {
   const [documentStatus, setDocumentStatus] = useState(initialDocumentState.status);
   const [isDocumentDirty, setIsDocumentDirty] = useState(false);
   const [canUndoImport, setCanUndoImport] = useState(false);
-  const [customView, setCustomView] = useState<CustomViewState | null>(null);
-  const customViewRef = useRef<CustomViewState | null>(null);
+  const [viewStack, setViewStack] = useState<GraphViewFrame[]>([]);
+  const viewStackRef = useRef<GraphViewFrame[]>([]);
+  const [selectedIdentity, setSelectedIdentity] = useState<ScopedNodeIdentity | undefined>();
+  const [diagnostics, setDiagnostics] = useState<ComputeDiagnostic[]>([]);
   const [graphSnapshot, setGraphSnapshot] = useState<GraphData>(initialGraphRef.current);
   const [isHierarchyFocusEnabled, setIsHierarchyFocusEnabled] = useState(true);
   const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
@@ -518,17 +393,11 @@ export const App = () => {
       return;
     }
     const currentGraph = controller.exportGraph();
-    const viewState = customViewRef.current;
-    setGraphSnapshot(
-      viewState ? mergeCustomGraphIntoRoot(viewState.parentGraph, viewState.customNodeId, currentGraph) : currentGraph,
-    );
+    setGraphSnapshot(mergeViewStackToRoot(viewStackRef.current, currentGraph));
   };
 
   const handleAuthoredGraphChange = (currentGraph: GraphData) => {
-    const viewState = customViewRef.current;
-    const rootGraph = viewState
-      ? mergeCustomGraphIntoRoot(viewState.parentGraph, viewState.customNodeId, currentGraph)
-      : currentGraph;
+    const rootGraph = mergeViewStackToRoot(viewStackRef.current, currentGraph);
     setGraphSnapshot(rootGraph);
     setIsDocumentDirty(true);
     setDocumentStatus('Unsaved changes');
@@ -536,10 +405,7 @@ export const App = () => {
 
   const getCurrentRootGraph = () => {
     const currentGraph = controllerRef.current?.exportGraph() ?? graphSnapshot;
-    const viewState = customViewRef.current;
-    return viewState
-      ? mergeCustomGraphIntoRoot(viewState.parentGraph, viewState.customNodeId, currentGraph)
-      : currentGraph;
+    return mergeViewStackToRoot(viewStackRef.current, currentGraph);
   };
 
   const selectNode = (nodeId: string) => {
@@ -576,9 +442,6 @@ export const App = () => {
   };
 
   const openCustomNode = (node: EconNodeData) => {
-    if (customViewRef.current) {
-      return false;
-    }
     if (node.kind !== 'custom' || !node.custom) {
       return false;
     }
@@ -586,29 +449,24 @@ export const App = () => {
     if (!controller) {
       return false;
     }
-    const ensuredCustom = ensureCustomPorts(node.custom);
     const parentGraph = controller.exportGraph();
-    const updatedParent: GraphData =
-      ensuredCustom === node.custom
-        ? parentGraph
-        : {
-            ...parentGraph,
-            nodes: parentGraph.nodes.map((item) =>
-              item.id === node.id ? { ...item, custom: ensuredCustom } : item,
-            ),
-          };
-    const viewState = { parentGraph: updatedParent, customNodeId: node.id };
-    customViewRef.current = viewState;
-    setCustomView(viewState);
-    controller.importGraph(ensuredCustom.internalGraph);
-    const rootGraph = mergeCustomGraphIntoRoot(updatedParent, node.id, ensuredCustom.internalGraph);
+    const parentPath = currentGraphPath(viewStackRef.current);
+    const frame: GraphViewFrame = Object.freeze({
+      parentPath,
+      parentGraph,
+      customNodeId: node.id,
+      customNodeLabel: node.label || node.id,
+    });
+    const nextStack = [...viewStackRef.current, frame];
+    viewStackRef.current = nextStack;
+    setViewStack(nextStack);
+    const nextPath = appendGraphPath(parentPath, node.id);
+    controller.importGraph(node.custom.internalGraph, formatGraphPath(nextPath));
+    const rootGraph = mergeViewStackToRoot(nextStack, node.custom.internalGraph);
     setGraphSnapshot(rootGraph);
-    if (ensuredCustom !== node.custom) {
-      setIsDocumentDirty(true);
-      setDocumentStatus('Unsaved changes');
-    }
     setSelectedNode(null);
     setSelectedEdge(null);
+    setSelectedIdentity(undefined);
     return true;
   };
 
@@ -624,8 +482,13 @@ export const App = () => {
       onSelectNode: (node) => {
         setSelectedNode(node);
         if (node) {
+          setSelectedIdentity(
+            Object.freeze({ graphPath: currentGraphPath(viewStackRef.current), nodeId: node.id }),
+          );
           setSelectedEdge(null);
           window.requestAnimationFrame(refreshGraphSnapshot);
+        } else {
+          setSelectedIdentity(undefined);
         }
       },
       onSelectEdge: (edge) => {
@@ -637,6 +500,7 @@ export const App = () => {
       onOpenCustomNode: handleOpenCustomNode,
       onGraphChange: handleAuthoredGraphChange,
       onConnectionRejected: (reason) => setDocumentStatus(`Connection rejected: ${reason}`),
+      onDiagnostics: setDiagnostics,
     }, simulationSettings);
     scheduleGraphResize();
   }, [isWorkspaceMounted, scheduleGraphResize]);
@@ -692,8 +556,7 @@ export const App = () => {
     if (!controller) {
       return;
     }
-    const nextData = data.custom ? { ...data, custom: ensureCustomPorts(data.custom) } : data;
-    controller.updateNodeData(nodeId, nextData);
+    controller.updateNodeData(nodeId, data);
     const updated = controller.cy.getElementById(nodeId)?.data() as EconNodeData | undefined;
     if (updated) {
       setSelectedNode({ ...updated });
@@ -723,39 +586,37 @@ export const App = () => {
     window.requestAnimationFrame(refreshGraphSnapshot);
   };
 
-  const handleExitCustomView = (shouldFocusNode = true) => {
+  const navigateToDepth = (targetDepth: number, shouldFocusNode = true) => {
     const controller = controllerRef.current;
-    const viewState = customViewRef.current;
-    if (!controller || !viewState) {
+    if (!controller || targetDepth < 0 || targetDepth >= viewStackRef.current.length) {
       return;
     }
-    const internalGraph = controller.exportGraph();
-    const updatedParent: GraphData = {
-      ...viewState.parentGraph,
-      nodes: viewState.parentGraph.nodes.map((node) => {
-        if (node.id !== viewState.customNodeId || !node.custom) {
-          return node;
-        }
-        const syncedCustom = ensureCustomPorts({ ...node.custom, internalGraph });
-        return {
-          ...node,
-          custom: syncedCustom,
-        };
-      }),
-    };
-    controller.importGraph(updatedParent);
-    const updatedCustom = updatedParent.nodes.find((node) => node.id === viewState.customNodeId) ?? null;
+    let currentGraph = controller.exportGraph();
+    let nextStack = [...viewStackRef.current];
+    let nextSelection: ScopedNodeIdentity | undefined;
+    while (nextStack.length > targetDepth) {
+      const parent = leaveGraphView(nextStack, currentGraph);
+      currentGraph = parent.graph;
+      nextStack = parent.stack;
+      nextSelection = parent.selection;
+    }
+    viewStackRef.current = nextStack;
+    setViewStack(nextStack);
+    const nextPath = currentGraphPath(nextStack);
+    controller.importGraph(currentGraph, formatGraphPath(nextPath));
+    const updatedCustom = nextSelection
+      ? currentGraph.nodes.find((node) => node.id === nextSelection.nodeId) ?? null
+      : null;
     setSelectedNode(updatedCustom ? { ...updatedCustom } : null);
     setSelectedEdge(null);
-    customViewRef.current = null;
-    setCustomView(null);
-    setGraphSnapshot(updatedParent);
-    setIsDocumentDirty(true);
-    setDocumentStatus('Unsaved changes');
-    if (shouldFocusNode) {
-      window.requestAnimationFrame(() => focusNode(viewState.customNodeId));
+    setSelectedIdentity(nextSelection);
+    setGraphSnapshot(mergeViewStackToRoot(nextStack, currentGraph));
+    if (shouldFocusNode && nextSelection) {
+      window.requestAnimationFrame(() => focusNode(nextSelection!.nodeId));
     }
   };
+
+  const handleBack = () => navigateToDepth(viewStackRef.current.length - 1);
 
   const handleEdgeChange = (edgeId: string, data: Partial<EconEdgeData>) => {
     const controller = controllerRef.current;
@@ -796,16 +657,17 @@ export const App = () => {
 
   const applyImportedDocument = (document: GraphDocument) => {
     const data = graphDocumentToRuntimeGraph(document);
-    customViewRef.current = null;
-    setCustomView(null);
+    viewStackRef.current = [];
+    setViewStack([]);
     setSelectedNode(null);
     setSelectedEdge(null);
+    setSelectedIdentity(undefined);
     if (data.nodeScale !== undefined) {
       setNodeScale(data.nodeScale);
     }
     setSimulationSettings(document.settings.simulation);
     controllerRef.current?.setSimulationSettings(document.settings.simulation);
-    controllerRef.current?.importGraph(data);
+    controllerRef.current?.importGraph(data, '/root');
     setGraphSnapshot(data);
     setIsDocumentDirty(true);
     setDocumentStatus('Imported document validated; saving');
@@ -837,55 +699,29 @@ export const App = () => {
     setDocumentStatus('Import undone; saving restored document');
   };
 
-  const handleHierarchySelectNode = (nodeId: string) => {
-    const viewState = customViewRef.current;
-    if (viewState) {
-      handleExitCustomView(isHierarchyFocusEnabled);
-      window.requestAnimationFrame(() => {
-        if (isHierarchyFocusEnabled) {
-          focusNode(nodeId);
-          return;
-        }
-        selectNode(nodeId);
-      });
+  const handleHierarchySelectNode = (identity: ScopedNodeIdentity) => {
+    const controller = controllerRef.current;
+    if (!controller) {
       return;
     }
-    if (isHierarchyFocusEnabled) {
-      focusNode(nodeId);
-      return;
-    }
-    selectNode(nodeId);
-  };
-
-  const handleHierarchySelectInternalNode = (customNodeId: string, nodeId: string) => {
-    const viewState = customViewRef.current;
-    if (viewState?.customNodeId === customNodeId) {
-      if (isHierarchyFocusEnabled) {
-        focusNode(nodeId);
-        return;
-      }
-      selectNode(nodeId);
-      return;
-    }
-    if (viewState) {
-      handleExitCustomView(isHierarchyFocusEnabled);
-    }
+    const rootGraph = getCurrentRootGraph();
+    const nextStack = buildViewStack(rootGraph, identity.graphPath);
+    const targetGraph = getGraphAtPath(rootGraph, identity.graphPath);
+    viewStackRef.current = nextStack;
+    setViewStack(nextStack);
+    setGraphSnapshot(rootGraph);
+    setSelectedNode(null);
+    setSelectedEdge(null);
+    setSelectedIdentity(undefined);
+    controller.importGraph(targetGraph, formatGraphPath(identity.graphPath));
     window.requestAnimationFrame(() => {
-      const controller = controllerRef.current;
-      if (!controller) {
+      const didSelect = isHierarchyFocusEnabled ? focusNode(identity.nodeId) : selectNode(identity.nodeId);
+      if (!didSelect) {
         return;
       }
-      const customNodeData = controller.cy.getElementById(customNodeId)?.data() as EconNodeData | undefined;
-      if (!customNodeData || !openCustomNode({ ...customNodeData })) {
-        return;
-      }
-      window.requestAnimationFrame(() => {
-        if (isHierarchyFocusEnabled) {
-          focusNode(nodeId);
-          return;
-        }
-        selectNode(nodeId);
-      });
+      const nodeData = controller.cy.getElementById(identity.nodeId)?.data() as EconNodeData | undefined;
+      setSelectedNode(nodeData ? { ...nodeData } : null);
+      setSelectedIdentity(identity);
     });
   };
 
@@ -942,6 +778,8 @@ export const App = () => {
   };
 
   const displayNodeScale = nodeScale / DEFAULT_NODE_SCALE;
+  const activeGraphPath = currentGraphPath(viewStack);
+  const breadcrumbs = buildBreadcrumbs(viewStack);
   const workspaceGridRows = Math.max(WORKSPACE_MIN_ROWS, getLayoutBottom(workspaceState.layout) + 6);
   const workspaceGridHeight =
     workspaceGridRows * WORKSPACE_ROW_HEIGHT +
@@ -970,8 +808,9 @@ export const App = () => {
                 setDocumentStatus('Unsaved changes');
               }}
               documentStatus={documentStatus}
-              isCustomView={Boolean(customView)}
-              onExitCustomView={customView ? handleExitCustomView : undefined}
+              breadcrumbs={breadcrumbs}
+              onNavigateBreadcrumb={(depth) => navigateToDepth(depth)}
+              onBack={viewStack.length > 0 ? handleBack : undefined}
               theme={theme}
               onToggleTheme={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
             />
@@ -986,12 +825,11 @@ export const App = () => {
         <WorkspacePanel title={panel.title} isClosable onClose={() => handleClosePanel(panel.id)}>
           <HierarchyPanel
             graph={graphSnapshot}
-            selectedNodeId={selectedNode?.id}
-            activeCustomNodeId={customView?.customNodeId}
+            selectedIdentity={selectedIdentity}
+            activeGraphPath={activeGraphPath}
             isFocusEnabled={isHierarchyFocusEnabled}
             onToggleFocus={() => setIsHierarchyFocusEnabled((prev) => !prev)}
             onSelectNode={handleHierarchySelectNode}
-            onSelectInternalNode={handleHierarchySelectInternalNode}
           />
         </WorkspacePanel>
       );
@@ -1007,6 +845,9 @@ export const App = () => {
           getNodeById={getNodeById}
           onDeleteNode={handleNodeDelete}
           onDeleteEdge={handleEdgeDelete}
+          graphPath={formatGraphPath(activeGraphPath)}
+          diagnostics={diagnostics}
+          selectionKey={selectedIdentity ? scopedNodeKey(selectedIdentity) : undefined}
         />
       </WorkspacePanel>
     );

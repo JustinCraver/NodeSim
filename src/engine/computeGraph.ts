@@ -27,14 +27,21 @@ class ComputationFailure extends Error {
     message: string,
     readonly cause?: string,
     readonly edgeId?: string,
+    readonly portId?: string,
   ) {
     super(message);
     this.name = 'ComputationFailure';
   }
 }
 
-const fail = (code: ComputeDiagnosticCode, message: string, cause?: string, edgeId?: string): never => {
-  throw new ComputationFailure(code, message, cause, edgeId);
+const fail = (
+  code: ComputeDiagnosticCode,
+  message: string,
+  cause?: string,
+  edgeId?: string,
+  portId?: string,
+): never => {
+  throw new ComputationFailure(code, message, cause, edgeId, portId);
 };
 
 const assertFinite = (value: number, context: string) => {
@@ -462,7 +469,7 @@ const computeGraphInternal = (
       }
       value = outputs?.get(portId);
       if (!value) {
-        return fail('invalid_port', `Unknown custom output port: ${portId}`, undefined, edge.id);
+        return fail('invalid_port', `Unknown custom output port: ${portId}`, undefined, edge.id, portId);
       }
     } else if (sourceNode.kind === 'asset') {
       const sourcePort = edge.sourcePort ?? (nodeMap.get(edge.target)?.kind === 'output' ? 'balance' : 'endingBalance');
@@ -475,11 +482,17 @@ const computeGraphInternal = (
         const ending = nodeValues.get(sourceNode.id);
         value = ending?.type === 'scalar' ? ending : undefined;
       } else {
-        return fail('invalid_port', `Unknown asset output port: ${sourcePort}`, undefined, edge.id);
+        return fail('invalid_port', `Unknown asset output port: ${sourcePort}`, undefined, edge.id, sourcePort);
       }
     } else {
       if (edge.sourcePort !== undefined) {
-        return fail('invalid_port', `${sourceNode.kind} has no named source ports`, undefined, edge.id);
+        return fail(
+          'invalid_port',
+          `${sourceNode.kind} has no named source ports`,
+          `Port ${edge.sourcePort} is not declared by ${sourceNode.id}`,
+          edge.id,
+          edge.sourcePort,
+        );
       }
       value = nodeValues.get(sourceNode.id);
     }
@@ -672,25 +685,41 @@ const computeGraphInternal = (
             const portId = edge.targetPort ?? (custom.inputs.length === 1 ? custom.inputs[0].id : undefined);
             const port =
               custom.inputs.find((candidate) => candidate.id === portId) ??
-              fail('invalid_port', `Unknown custom input port: ${portId ?? '(missing)'}`, undefined, edge.id);
+              fail('invalid_port', `Unknown custom input port: ${portId ?? '(missing)'}`, undefined, edge.id, portId);
             const expected = port.valueType ?? 'scalar';
             if (value.type !== expected) {
-              fail('invalid_type', `Custom input ${port.id} expects ${expected}, received ${value.type}`, undefined, edge.id);
+              fail(
+                'invalid_type',
+                `Custom input ${port.id} expects ${expected}, received ${value.type}`,
+                undefined,
+                edge.id,
+                port.id,
+              );
             }
             totals.set(port.id, [...(totals.get(port.id) ?? []), value]);
           });
 
           const overrides = new Map<string, RuntimeValue>();
           custom.inputs.forEach((port) => {
-            const boundId = custom.inputBindings[port.id] ?? fail('invalid_port', `Missing input binding for ${port.id}`);
+            const boundId =
+              custom.inputBindings[port.id] ??
+              fail('invalid_port', `Missing input binding for ${port.id}`, undefined, undefined, port.id);
             const type = (port.valueType ?? 'scalar') as Exclude<ValueType, 'none'>;
-            const boundNode = internalNodeMap.get(boundId) ?? fail('invalid_port', `Invalid input binding for ${port.id}`);
+            const boundNode =
+              internalNodeMap.get(boundId) ??
+              fail('invalid_port', `Invalid input binding for ${port.id}`, `Unknown internal node ${boundId}`, undefined, port.id);
             if (boundNode.kind !== 'income' && boundNode.kind !== 'value') {
-              fail('invalid_port', `Input binding ${port.id} must target income or value`);
+              fail('invalid_port', `Input binding ${port.id} must target income or value`, undefined, undefined, port.id);
             }
             const boundType = boundNode.kind === 'income' ? 'monthly-flow' : 'scalar';
             if (type !== boundType) {
-              fail('invalid_type', `Custom input ${port.id} declares ${type}, but ${boundId} is ${boundType}`);
+              fail(
+                'invalid_type',
+                `Custom input ${port.id} declares ${type}, but ${boundId} is ${boundType}`,
+                undefined,
+                undefined,
+                port.id,
+              );
             }
             const value = sumValues(totals.get(port.id) ?? [], horizon, type);
             const existing = overrides.get(boundId);
@@ -710,10 +739,12 @@ const computeGraphInternal = (
           }
           const outputs = new Map<string, RuntimeValue>();
           custom.outputs.forEach((port) => {
-            const boundId = custom.outputBindings[port.id] ?? fail('invalid_port', `Missing output binding for ${port.id}`);
+            const boundId =
+              custom.outputBindings[port.id] ??
+              fail('invalid_port', `Missing output binding for ${port.id}`, undefined, undefined, port.id);
             const boundNode =
               internalResult.nodes.find((candidate) => candidate.id === boundId) ??
-              fail('invalid_port', `Invalid output binding for ${port.id}`);
+              fail('invalid_port', `Invalid output binding for ${port.id}`, `Unknown internal node ${boundId}`, undefined, port.id);
             let value = internalResult.nodeValues.get(boundId);
             if (boundNode.kind === 'asset' && port.valueType === 'timeseries' && boundNode.timeseries) {
               value = { type: 'timeseries', samples: [...boundNode.timeseries] };
@@ -732,7 +763,13 @@ const computeGraphInternal = (
             }
             const expected = port.valueType ?? 'scalar';
             if (value.type !== expected) {
-              fail('invalid_type', `Custom output ${port.id} declares ${expected}, received ${value.type}`);
+              fail(
+                'invalid_type',
+                `Custom output ${port.id} declares ${expected}, received ${value.type}`,
+                undefined,
+                undefined,
+                port.id,
+              );
             }
             outputs.set(port.id, cloneValue(value));
           });
@@ -769,6 +806,7 @@ const computeGraphInternal = (
         code: failure.code,
         nodeId: node.id,
         ...(failure.edgeId ? { edgeId: failure.edgeId } : {}),
+        ...(failure.portId ? { portId: failure.portId } : {}),
         graphPath,
         message: failure.message,
         ...(failure.cause ? { cause: failure.cause } : {}),

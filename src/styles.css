@@ -608,6 +608,26 @@ body {
   color: var(--muted);
 }
 
+.diagnostic-list {
+  padding: 12px;
+  border: 1px solid #dc2626;
+  border-radius: 9px;
+  background: color-mix(in srgb, #dc2626 8%, var(--panel-bg));
+}
+
+.diagnostic-item {
+  font-size: 15px;
+}
+
+.diagnostic-context,
+.diagnostic-cause {
+  margin-top: 3px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .toolbar {
   display: flex;
   align-items: center;
@@ -630,6 +650,19 @@ body {
 
 .toolbar button:hover {
   background: var(--button-hover);
+}
+
+.graph-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.graph-breadcrumbs button:disabled {
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+  cursor: default;
+  opacity: 1;
 }
 
 .toolbar .toolbar-toggle {

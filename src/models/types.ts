@@ -211,6 +211,7 @@ export type ComputeDiagnostic = {
   code: ComputeDiagnosticCode;
   nodeId?: string;
   edgeId?: string;
+  portId?: string;
   graphPath: string;
   message: string;
   cause?: string;

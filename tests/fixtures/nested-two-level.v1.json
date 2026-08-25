@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "settings": {
+    "simulation": {
+      "version": 1,
+      "horizonMonths": 12,
+      "contributionTiming": "end-of-month",
+      "annualRateConvention": "nominal-divided-by-12",
+      "monthZero": "initial-balance"
+    }
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "shared",
+        "label": "Root input",
+        "kind": "value",
+        "baseValue": 5
+      },
+      {
+        "id": "nested",
+        "label": "Outer custom",
+        "kind": "custom",
+        "custom": {
+          "inputs": [
+            { "id": "in", "label": "Input", "valueType": "scalar" }
+          ],
+          "outputs": [
+            { "id": "out", "label": "Output", "valueType": "scalar", "formulaId": "out" }
+          ],
+          "internalGraph": {
+            "nodes": [
+              {
+                "id": "shared",
+                "label": "Outer input",
+                "kind": "value",
+                "baseValue": 0
+              },
+              {
+                "id": "nested",
+                "label": "Inner custom",
+                "kind": "custom",
+                "custom": {
+                  "inputs": [
+                    { "id": "in", "label": "Input", "valueType": "scalar" }
+                  ],
+                  "outputs": [
+                    { "id": "out", "label": "Output", "valueType": "scalar", "formulaId": "out" }
+                  ],
+                  "internalGraph": {
+                    "nodes": [
+                      {
+                        "id": "shared",
+                        "label": "Inner input",
+                        "kind": "value",
+                        "baseValue": 0
+                      },
+                      {
+                        "id": "calc",
+                        "label": "Double",
+                        "kind": "calc",
+                        "formula": "shared * 2",
+                        "outputType": "scalar"
+                      }
+                    ],
+                    "edges": [
+                      {
+                        "id": "shared-calc",
+                        "source": "shared",
+                        "target": "calc",
+                        "kind": "flow",
+                        "weight": 1,
+                        "lagMonths": 0
+                      }
+                    ]
+                  },
+                  "inputBindings": { "in": "shared" },
+                  "outputBindings": { "out": "calc" }
+                }
+              },
+              {
+                "id": "result",
+                "label": "Outer result",
+                "kind": "value",
+                "baseValue": 0
+              }
+            ],
+            "edges": [
+              {
+                "id": "shared-nested",
+                "source": "shared",
+                "target": "nested",
+                "kind": "flow",
+                "targetPort": "in",
+                "weight": 1,
+                "lagMonths": 0
+              },
+              {
+                "id": "nested-result",
+                "source": "nested",
+                "target": "result",
+                "kind": "flow",
+                "sourcePort": "out",
+                "weight": 1,
+                "lagMonths": 0
+              }
+            ]
+          },
+          "inputBindings": { "in": "shared" },
+          "outputBindings": { "out": "result" }
+        }
+      },
+      {
+        "id": "result",
+        "label": "Root result",
+        "kind": "value",
+        "baseValue": 0
+      }
+    ],
+    "edges": [
+      {
+        "id": "shared-nested",
+        "source": "shared",
+        "target": "nested",
+        "kind": "flow",
+        "targetPort": "in",
+        "weight": 1,
+        "lagMonths": 0
+      },
+      {
+        "id": "nested-result",
+        "source": "nested",
+        "target": "result",
+        "kind": "flow",
+        "sourcePort": "out",
+        "weight": 1,
+        "lagMonths": 0
+      }
+    ]
+  }
+}

@@ -1,24 +1,29 @@
 import { useEffect, useMemo, useState } from 'react';
+import {
+  appendGraphPath,
+  formatGraphPath,
+  graphPathsEqual,
+  ROOT_GRAPH_PATH,
+  scopedNodeKey,
+  type GraphPath,
+  type ScopedNodeIdentity,
+} from '../graph/graphScope';
 import type { EconNodeData, GraphData, NodeKind } from '../models/types';
 
-type GraphScope = 'main' | string;
-
 export type HierarchyItem = {
-  id: string;
+  identity: ScopedNodeIdentity;
   label: string;
   kind: NodeKind;
-  graphScope: GraphScope;
   children?: HierarchyItem[];
 };
 
 type HierarchyPanelProps = {
   graph: GraphData;
-  selectedNodeId?: string;
-  activeCustomNodeId?: string;
+  selectedIdentity?: ScopedNodeIdentity;
+  activeGraphPath: GraphPath;
   isFocusEnabled: boolean;
   onToggleFocus: () => void;
-  onSelectNode: (nodeId: string) => void;
-  onSelectInternalNode: (customNodeId: string, nodeId: string) => void;
+  onSelectNode: (identity: ScopedNodeIdentity) => void;
 };
 
 const KIND_LABELS: Record<NodeKind, string> = {
@@ -36,51 +41,53 @@ const KIND_LABELS: Record<NodeKind, string> = {
   text: 'Text',
 };
 
-const buildItem = (node: EconNodeData, graphScope: GraphScope): HierarchyItem => ({
-  id: node.id,
+const buildItem = (node: EconNodeData, graphPath: GraphPath): HierarchyItem => ({
+  identity: Object.freeze({ graphPath, nodeId: node.id }),
   label: node.label || node.id,
   kind: node.kind,
-  graphScope,
   children:
     node.kind === 'custom' && node.custom
-      ? node.custom.internalGraph.nodes.map((child) => buildItem(child, node.id))
+      ? node.custom.internalGraph.nodes.map((child) => buildItem(child, appendGraphPath(graphPath, node.id)))
       : undefined,
 });
 
-const collectCustomIds = (items: HierarchyItem[]) =>
-  items.flatMap((item) => (item.kind === 'custom' ? [item.id] : []));
+const collectCustomKeys = (items: HierarchyItem[]): string[] =>
+  items.flatMap((item) => [
+    ...(item.kind === 'custom' ? [scopedNodeKey(item.identity)] : []),
+    ...collectCustomKeys(item.children ?? []),
+  ]);
 
 export const HierarchyPanel = ({
   graph,
-  selectedNodeId,
-  activeCustomNodeId,
+  selectedIdentity,
+  activeGraphPath,
   isFocusEnabled,
   onToggleFocus,
   onSelectNode,
-  onSelectInternalNode,
 }: HierarchyPanelProps) => {
-  const items = useMemo(() => graph.nodes.map((node) => buildItem(node, 'main')), [graph]);
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set(collectCustomIds(items)));
+  const items = useMemo(() => graph.nodes.map((node) => buildItem(node, ROOT_GRAPH_PATH)), [graph]);
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set(collectCustomKeys(items)));
 
   useEffect(() => {
-    const customIds = collectCustomIds(items);
-    if (customIds.length === 0) {
+    const customKeys = collectCustomKeys(items);
+    if (customKeys.length === 0) {
       return;
     }
-    setExpandedIds((current) => {
+    setExpandedKeys((current) => {
       const next = new Set(current);
-      customIds.forEach((id) => next.add(id));
+      customKeys.forEach((key) => next.add(key));
       return next;
     });
   }, [items]);
 
-  const toggleExpanded = (nodeId: string) => {
-    setExpandedIds((current) => {
+  const toggleExpanded = (identity: ScopedNodeIdentity) => {
+    const key = scopedNodeKey(identity);
+    setExpandedKeys((current) => {
       const next = new Set(current);
-      if (next.has(nodeId)) {
-        next.delete(nodeId);
+      if (next.has(key)) {
+        next.delete(key);
       } else {
-        next.add(nodeId);
+        next.add(key);
       }
       return next;
     });
@@ -88,17 +95,17 @@ export const HierarchyPanel = ({
 
   const renderItem = (item: HierarchyItem, depth: number) => {
     const hasChildren = Boolean(item.children?.length);
-    const isExpanded = expandedIds.has(item.id);
+    const itemKey = scopedNodeKey(item.identity);
+    const isExpanded = expandedKeys.has(itemKey);
     const isSelected =
-      item.id === selectedNodeId && (item.graphScope === 'main' || item.graphScope === activeCustomNodeId);
-    const isActiveCustom = item.id === activeCustomNodeId;
-    const buttonLabel =
-      item.graphScope === 'main'
-        ? `Select ${item.label}`
-        : `Open ${item.label} inside ${item.graphScope}`;
+      selectedIdentity?.nodeId === item.identity.nodeId &&
+      graphPathsEqual(selectedIdentity.graphPath, item.identity.graphPath);
+    const childPath = appendGraphPath(item.identity.graphPath, item.identity.nodeId);
+    const isActiveCustom = item.kind === 'custom' && graphPathsEqual(childPath, activeGraphPath);
+    const buttonLabel = `Select ${item.label} in ${formatGraphPath(item.identity.graphPath)}`;
 
     return (
-      <div key={`${item.graphScope}-${item.id}`} className="hierarchy-node">
+      <div key={itemKey} className="hierarchy-node">
         <div
           className={[
             'hierarchy-row',
@@ -115,7 +122,7 @@ export const HierarchyPanel = ({
               className="hierarchy-disclosure"
               aria-label={isExpanded ? `Collapse ${item.label}` : `Expand ${item.label}`}
               aria-expanded={isExpanded}
-              onClick={() => toggleExpanded(item.id)}
+              onClick={() => toggleExpanded(item.identity)}
             >
               {isExpanded ? 'v' : '>'}
             </button>
@@ -126,13 +133,7 @@ export const HierarchyPanel = ({
             type="button"
             className="hierarchy-item-button"
             title={buttonLabel}
-            onClick={() => {
-              if (item.graphScope === 'main') {
-                onSelectNode(item.id);
-                return;
-              }
-              onSelectInternalNode(item.graphScope, item.id);
-            }}
+            onClick={() => onSelectNode(item.identity)}
           >
             <span className="hierarchy-item-label">{item.label}</span>
             <span className="hierarchy-kind">{KIND_LABELS[item.kind]}</span>
@@ -158,7 +159,9 @@ export const HierarchyPanel = ({
             Focus
           </button>
         </div>
-        {activeCustomNodeId && <div className="hierarchy-active">Inside {activeCustomNodeId}</div>}
+        {activeGraphPath.length > 0 && (
+          <div className="hierarchy-active">Inside {formatGraphPath(activeGraphPath)}</div>
+        )}
       </div>
       <div className="hierarchy-root">Main Graph</div>
       <div className="hierarchy-tree">{items.map((item) => renderItem(item, 0))}</div>

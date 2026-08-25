@@ -5,7 +5,14 @@ import {
   MAX_HORIZON_MONTHS,
   migrateGraphDocument,
 } from '../document/graphDocument';
+import {
+  diagnoseCustomBindings,
+  getCompatibleInputBindingNodes,
+  getCompatibleOutputBindingNodes,
+  repairCustomBindings,
+} from '../graph/customBindings';
 import type {
+  ComputeDiagnostic,
   CustomNodeConfig,
   EconEdgeData,
   EconNodeData,
@@ -58,28 +65,6 @@ const BINARY_PORT_OPTIONS: PortDef[] = [
 
 const COMPUTATIONAL_VALUE_TYPES: Exclude<ValueType, 'none'>[] = ['scalar', 'monthly-flow', 'timeseries'];
 
-const getNodeBindingType = (node: EconNodeData): ValueType | undefined => {
-  if (node.kind === 'income' || node.kind === 'expense') {
-    return 'monthly-flow';
-  }
-  if (node.kind === 'value' || node.kind === 'output') {
-    return 'scalar';
-  }
-  if (node.kind === 'calc') {
-    return node.outputType ?? 'scalar';
-  }
-  if (node.kind === 'asset') {
-    return 'scalar';
-  }
-  if (node.kind === 'custom' && node.custom?.outputs.length === 1) {
-    return node.custom.outputs[0].valueType;
-  }
-  if (node.kind === 'text') {
-    return 'none';
-  }
-  return node.valueType ?? 'scalar';
-};
-
 type InspectorPanelProps = {
   node: EconNodeData | null;
   edge: EconEdgeData | null;
@@ -88,6 +73,35 @@ type InspectorPanelProps = {
   getNodeById: (nodeId: string) => EconNodeData | null;
   onDeleteNode: (nodeId: string) => void;
   onDeleteEdge: (edgeId: string) => void;
+  graphPath: string;
+  diagnostics: readonly ComputeDiagnostic[];
+  selectionKey?: string;
+};
+
+const DiagnosticList = ({ diagnostics }: { diagnostics: readonly ComputeDiagnostic[] }) => {
+  if (diagnostics.length === 0) {
+    return null;
+  }
+  return (
+    <section className="panel-section diagnostic-list" aria-label="Structured diagnostics">
+      <div className="label">Diagnostics</div>
+      {diagnostics.map((diagnostic, index) => (
+        <div
+          className="diagnostic-item"
+          key={`${diagnostic.graphPath}-${diagnostic.nodeId ?? ''}-${diagnostic.edgeId ?? ''}-${diagnostic.portId ?? ''}-${index}`}
+        >
+          <div>{diagnostic.message}</div>
+          <div className="diagnostic-context">
+            path {diagnostic.graphPath}
+            {diagnostic.nodeId ? ` · node ${diagnostic.nodeId}` : ''}
+            {diagnostic.edgeId ? ` · edge ${diagnostic.edgeId}` : ''}
+            {diagnostic.portId ? ` · port ${diagnostic.portId}` : ''}
+          </div>
+          {diagnostic.cause && <div className="diagnostic-cause">{diagnostic.cause}</div>}
+        </div>
+      ))}
+    </section>
+  );
 };
 
 export const InspectorPanel = ({
@@ -98,6 +112,9 @@ export const InspectorPanel = ({
   getNodeById,
   onDeleteNode,
   onDeleteEdge,
+  graphPath,
+  diagnostics,
+  selectionKey,
 }: InspectorPanelProps) => {
   const [internalGraphText, setInternalGraphText] = useState('');
   const [internalGraphError, setInternalGraphError] = useState<string | null>(null);
@@ -109,12 +126,13 @@ export const InspectorPanel = ({
     const graph = node.custom?.internalGraph ?? { nodes: [], edges: [] };
     setInternalGraphText(JSON.stringify(graph, null, 2));
     setInternalGraphError(null);
-  }, [node?.id, node?.kind]);
+  }, [node?.id, node?.kind, selectionKey]);
 
   if (!node && !edge) {
     return (
       <div className="panel">
         <h2>Inspector</h2>
+        <DiagnosticList diagnostics={diagnostics} />
         <p>Select a node or connection to edit its properties.</p>
       </div>
     );
@@ -152,6 +170,7 @@ export const InspectorPanel = ({
     return (
       <div className="panel">
         <h2>Inspector</h2>
+        <DiagnosticList diagnostics={diagnostics} />
         <div className="panel-section">
           <div className="label">Connection</div>
           <div>
@@ -250,6 +269,10 @@ export const InspectorPanel = ({
   }
   const activeNode = node;
   const customConfig = activeNode.custom;
+  const bindingDiagnostics =
+    activeNode.kind === 'custom' && customConfig
+      ? diagnoseCustomBindings(customConfig, graphPath, activeNode.id)
+      : [];
 
   const handleNumberChange = (field: keyof EconNodeData) => (event: React.ChangeEvent<HTMLInputElement>) => {
     const value = Number(event.target.value);
@@ -491,6 +514,7 @@ export const InspectorPanel = ({
   return (
     <div className="panel">
       <h2>Inspector</h2>
+      <DiagnosticList diagnostics={diagnostics} />
       {activeNode.kind === 'text' ? (
         <label className="panel-section">
           <span className="label">Text</span>
@@ -605,6 +629,27 @@ export const InspectorPanel = ({
       )}
       {activeNode.kind === 'custom' && customConfig && (
         <>
+          {bindingDiagnostics.length > 0 && (
+            <div className="panel-section">
+              <div className="label">Binding Repair</div>
+              <p>Bindings are unchanged. Repair creates typed zero-value placeholders only when you choose it.</p>
+              <DiagnosticList diagnostics={bindingDiagnostics} />
+              <button
+                type="button"
+                onClick={() => {
+                  const repaired = repairCustomBindings(customConfig, graphPath, activeNode.id);
+                  handleCustomUpdate(repaired.custom);
+                  setInternalGraphError(
+                    repaired.unresolvedDiagnostics.length > 0
+                      ? `${repaired.unresolvedDiagnostics.length} binding issue(s) still require manual repair.`
+                      : null,
+                  );
+                }}
+              >
+                Repair Invalid Bindings
+              </button>
+            </div>
+          )}
           <div className="panel-section">
             <div className="label">Inputs</div>
             {customConfig.inputs.map((port) => (
@@ -691,11 +736,7 @@ export const InspectorPanel = ({
                   onChange={(event) => updateBinding('input', port.id, event.target.value)}
                 >
                   <option value="">Unbound</option>
-                  {customConfig.internalGraph.nodes
-                    .filter((internal) =>
-                      (internal.kind === 'income' || internal.kind === 'value') &&
-                      getNodeBindingType(internal) === (port.valueType ?? 'scalar'),
-                    )
+                  {getCompatibleInputBindingNodes(customConfig.internalGraph, port.valueType ?? 'scalar')
                     .map((internal) => (
                     <option key={internal.id} value={internal.id}>
                       {internal.label} ({internal.id})
@@ -717,12 +758,7 @@ export const InspectorPanel = ({
                   onChange={(event) => updateBinding('output', port.id, event.target.value)}
                 >
                   <option value="">Unbound</option>
-                  {customConfig.internalGraph.nodes
-                    .filter((internal) =>
-                      internal.kind === 'asset'
-                        ? port.valueType === 'scalar' || port.valueType === 'timeseries'
-                        : getNodeBindingType(internal) === (port.valueType ?? 'scalar'),
-                    )
+                  {getCompatibleOutputBindingNodes(customConfig.internalGraph, port.valueType ?? 'scalar')
                     .map((internal) => (
                     <option key={internal.id} value={internal.id}>
                       {internal.label} ({internal.id})

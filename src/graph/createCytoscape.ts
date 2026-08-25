@@ -2,6 +2,7 @@ import cytoscape, { type Core, type NodeSingular, type StylesheetJson } from 'cy
 import type {
   EconEdgeData,
   EconNodeData,
+  ComputeDiagnostic,
   GraphComputeResult,
   GraphData,
   NodeKind,
@@ -17,6 +18,7 @@ type GraphCallbacks = {
   onOpenCustomNode?: (node: EconNodeData) => void;
   onGraphChange?: (graph: GraphData) => void;
   onConnectionRejected?: (reason: string) => void;
+  onDiagnostics?: (diagnostics: ComputeDiagnostic[]) => void;
 };
 
 const BASIC_NODE_OPTIONS: { kind: NodeKind; label: string }[] = [
@@ -535,10 +537,12 @@ const recompute = (
   scale: number,
   palette: ThemePalette,
   simulationSettings: SimulationSettingsV1,
+  graphPath: string,
 ) => {
   const graphData = graphDataFromCy(cy, scale);
-  const result = computeGraph(graphData.nodes, graphData.edges, simulationSettings);
+  const result = computeGraph(graphData.nodes, graphData.edges, simulationSettings, graphPath);
   applyComputeResults(cy, result, scale, palette);
+  return result;
 };
 
 const buildStyles = (palette: ThemePalette) =>
@@ -779,6 +783,13 @@ export const createCytoscape = (
 
   let nodeScale = Math.max(0.1, graphData.nodeScale ?? DEFAULT_NODE_SCALE);
   let simulationSettings = { ...initialSimulationSettings };
+  let graphPath = '/root';
+
+  const runRecompute = () => {
+    const result = recompute(cy, nodeScale, themePalette, simulationSettings, graphPath);
+    callbacks.onDiagnostics?.(result.diagnostics);
+    return result;
+  };
 
   const notifyGraphChange = () => callbacks.onGraphChange?.(graphDataFromCy(cy, nodeScale));
 
@@ -826,12 +837,12 @@ export const createCytoscape = (
     }
     nodeScale = nextScale;
     applyNodeScale(nodeScale);
-    recompute(cy, nodeScale, themePalette, simulationSettings);
+    runRecompute();
     notifyGraphChange();
   };
 
   applyNodeScale(nodeScale);
-  recompute(cy, nodeScale, themePalette, simulationSettings);
+  runRecompute();
 
   const updateFocusDimming = () => {
     const hasFocused = cy.nodes(':selected, .hovered').length > 0;
@@ -977,7 +988,7 @@ export const createCytoscape = (
       data: node,
       position,
     });
-    recompute(cy, nodeScale, themePalette, simulationSettings);
+    runRecompute();
     notifyGraphChange();
     cy.getElementById(id)?.select();
   };
@@ -1048,7 +1059,7 @@ export const createCytoscape = (
         return false;
       }
       cy.add({ group: 'edges', data: candidate });
-      recompute(cy, nodeScale, themePalette, simulationSettings);
+      runRecompute();
       notifyGraphChange();
       return true;
     };
@@ -1226,7 +1237,7 @@ export const createCytoscape = (
   });
 
   cy.on('remove add', 'edge', () => {
-    recompute(cy, nodeScale, themePalette, simulationSettings);
+    runRecompute();
   });
 
   cy.on('dragfree', 'node', () => notifyGraphChange());
@@ -1267,7 +1278,7 @@ export const createCytoscape = (
         ? { ...merged, ...buildTextLayout(merged.label, nodeScale) }
         : merged;
     node.data(nextData);
-    recompute(cy, nodeScale, themePalette, simulationSettings);
+    runRecompute();
     notifyGraphChange();
   };
 
@@ -1281,11 +1292,12 @@ export const createCytoscape = (
       ...current,
       ...data,
     });
-    recompute(cy, nodeScale, themePalette, simulationSettings);
+    runRecompute();
     notifyGraphChange();
   };
 
-  const importGraph = (data: GraphData) => {
+  const importGraph = (data: GraphData, nextGraphPath = '/root') => {
+    graphPath = nextGraphPath;
     if (data.nodeScale !== undefined) {
       nodeScale = Math.max(0.1, data.nodeScale);
       applyNodeScale(nodeScale);
@@ -1293,7 +1305,7 @@ export const createCytoscape = (
     cy.elements().remove();
     cy.add(data.nodes.map((node) => toCyNodeElement(node)));
     cy.add(data.edges.map((edge) => ({ data: edge })));
-    recompute(cy, nodeScale, themePalette, simulationSettings);
+    runRecompute();
     const hasPositions = hasMeaningfulPositions(data.nodes);
     if (hasPositions) {
       cy.layout({ name: 'preset' }).run();
@@ -1321,7 +1333,7 @@ export const createCytoscape = (
     node.remove();
     // Recompute after a brief delay to ensure DOM updates are complete
     setTimeout(() => {
-      recompute(cy, nodeScale, themePalette, simulationSettings);
+      runRecompute();
       notifyGraphChange();
     }, 0);
   };
@@ -1336,14 +1348,14 @@ export const createCytoscape = (
     }
     edge.remove();
     setTimeout(() => {
-      recompute(cy, nodeScale, themePalette, simulationSettings);
+      runRecompute();
       notifyGraphChange();
     }, 0);
   };
 
   const setSimulationSettings = (settings: SimulationSettingsV1) => {
     simulationSettings = { ...settings };
-    recompute(cy, nodeScale, themePalette, simulationSettings);
+    runRecompute();
   };
 
   const exportGraph = (): GraphData => graphDataFromCy(cy, nodeScale);
@@ -1356,7 +1368,7 @@ export const createCytoscape = (
       themePalette = readThemePalette();
       cy.style().fromJson(buildStyles(themePalette)).update();
       applyNodeScale(nodeScale);
-      recompute(cy, nodeScale, themePalette, simulationSettings);
+      runRecompute();
     });
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   }
