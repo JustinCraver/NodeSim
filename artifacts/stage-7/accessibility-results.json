@@ -1,0 +1,67 @@
+{
+  "rules": {
+    "describedByTargetsExist": {
+      "failures": [],
+      "pass": true
+    },
+    "oneH1": {
+      "count": 1,
+      "pass": true
+    },
+    "restrainedLiveRegions": {
+      "count": 1,
+      "pass": true
+    },
+    "semanticGraph": {
+      "edgeItems": 6,
+      "mentionsErrors": false,
+      "mentionsPorts": true,
+      "mentionsValues": true,
+      "nodeItems": 9,
+      "pass": true,
+      "treeItems": 15
+    },
+    "tabRelationships": {
+      "pass": true,
+      "selectedCount": 1
+    },
+    "uniqueIds": {
+      "failures": [],
+      "pass": true
+    },
+    "visibleControlsNamed": {
+      "failures": [],
+      "pass": true
+    }
+  },
+  "fieldError": {
+    "describedBy": ":rt:-error",
+    "errorText": "Value must be a finite number.",
+    "invalid": "true",
+    "pass": true
+  },
+  "dynamicMenu": {
+    "role": "menu",
+    "initialFocus": "Value",
+    "escapeRestoredFocus": "Add",
+    "pass": true
+  },
+  "console": [],
+  "errorSurfacing": {
+    "inspector": {
+      "diagnostics": [
+        "Division by zeropath /root/nested/nested, node calcDivision by zero"
+      ]
+    },
+    "semanticTree": [
+      "Error: Division by zero"
+    ],
+    "pass": true,
+    "formulaField": {
+      "describedBy": ":rr:-formula-error",
+      "error": "Division by zero",
+      "invalid": "true",
+      "pass": true
+    }
+  }
+}

@@ -12,6 +12,7 @@ import type {
   EconNodeData,
   GraphData,
   GraphDocument,
+  NodeKind,
   SimulationSettingsV1,
 } from './models/types';
 import { createCytoscape } from './graph/createCytoscape';
@@ -37,6 +38,7 @@ import {
   formatGraphPath,
   getGraphAtPath,
   graphPathsEqual,
+  replaceGraphAtPath,
   scopedNodeKey,
   type GraphViewFrame,
   type ScopedNodeIdentity,
@@ -51,6 +53,7 @@ import 'react-resizable/css/styles.css';
 import './styles.css';
 
 const DEFAULT_NODE_SCALE = 2;
+const COMPACT_WORKSPACE_QUERY = '(max-width: 1100px)';
 const AUTOSAVE_DEBOUNCE_MS = 250;
 const WORKSPACE_STORAGE_KEY = 'econgraph.workspace.v1';
 const WORKSPACE_GRID_COLS = 12;
@@ -108,6 +111,25 @@ type WorkspaceState = {
 type InitialDocumentState = {
   document: GraphDocument;
   status: string;
+};
+
+type ConnectionCandidate = { sourcePort?: string; targetPort?: string };
+
+const getConnectionCandidates = (source: EconNodeData, target: EconNodeData): ConnectionCandidate[] => {
+  const sourceOptions: ConnectionCandidate[] = source.kind === 'custom'
+    ? (source.custom?.outputs ?? []).map((port) => ({ sourcePort: port.id }))
+    : source.kind === 'asset'
+      ? [{ sourcePort: 'balance' }, { sourcePort: 'endingBalance' }]
+      : [{}];
+  const targetOptions: ConnectionCandidate[] =
+    target.kind === 'add' || target.kind === 'subtract' || target.kind === 'multiply' || target.kind === 'divide'
+      ? [{ targetPort: '1' }, { targetPort: '2' }]
+      : target.kind === 'custom'
+        ? (target.custom?.inputs ?? []).map((port) => ({ targetPort: port.id }))
+        : [{}];
+  return sourceOptions.flatMap((sourceOption) =>
+    targetOptions.map((targetOption) => ({ ...sourceOption, ...targetOption })),
+  );
 };
 
 const loadInitialDocument = (): InitialDocumentState => {
@@ -351,6 +373,9 @@ const getInitialTheme = (): 'light' | 'dark' => {
   return 'light';
 };
 
+const getInitialCompactMode = () =>
+  typeof window !== 'undefined' && window.matchMedia?.(COMPACT_WORKSPACE_QUERY).matches;
+
 export const App = () => {
   const [initialDocumentState] = useState<InitialDocumentState>(loadInitialDocument);
   const initialGraphRef = useRef<GraphData>(graphDocumentToRuntimeGraph(initialDocumentState.document));
@@ -380,6 +405,8 @@ export const App = () => {
   const [isHierarchyFocusEnabled, setIsHierarchyFocusEnabled] = useState(true);
   const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
   const [workspaceState, setWorkspaceState] = useState<WorkspaceState>(loadWorkspaceState);
+  const [isCompactWorkspace, setIsCompactWorkspace] = useState(getInitialCompactMode);
+  const [activeCompactTab, setActiveCompactTab] = useState<PanelType>('graph');
 
   const scheduleFrame = useCallback((callback: () => void) => {
     const frame = window.requestAnimationFrame(() => {
@@ -441,15 +468,14 @@ export const App = () => {
       return false;
     }
     const node = controller.cy.getElementById(nodeId);
-    controller.cy.animate(
-      {
-        center: { eles: node },
-        zoom: Math.max(controller.cy.zoom(), 0.75),
-      },
-      {
-        duration: 220,
-      },
-    );
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      controller.cy.center(node);
+    } else {
+      controller.cy.animate(
+        { center: { eles: node }, zoom: controller.cy.zoom() },
+        { duration: 220 },
+      );
+    }
     return true;
   };
 
@@ -526,6 +552,9 @@ export const App = () => {
       onCommand: executeCommand,
       onConnectionRejected: (reason) => setDocumentStatus(`Connection rejected: ${reason}`),
       onDiagnostics: setDiagnostics,
+      onGraphComputed: (computedGraph, path) => {
+        setGraphSnapshot((rootGraph) => replaceGraphAtPath(rootGraph, path, computedGraph));
+      },
     }, simulationSettings);
     const projectSnapshot = (snapshot: DocumentStoreSnapshot) => {
       const rootGraph = graphDocumentToRuntimeGraph(snapshot.document);
@@ -551,13 +580,13 @@ export const App = () => {
         setViewStack([]);
         activeGraph = rootGraph;
       }
+      setGraphSnapshot(rootGraph);
       controllerRef.current?.projectGraph(
         activeGraph,
         path,
         snapshot.selection,
         snapshot.document.settings.simulation,
       );
-      setGraphSnapshot(rootGraph);
       setNodeScale(rootGraph.nodeScale ?? DEFAULT_NODE_SCALE);
       setSimulationSettings(snapshot.document.settings.simulation);
       if (snapshot.selection?.kind === 'node' && graphPathsEqual(snapshot.selection.graphPath, path)) {
@@ -593,7 +622,7 @@ export const App = () => {
       controllerRef.current = null;
       controller?.destroy();
     };
-  }, [isWorkspaceMounted, scheduleGraphResize]);
+  }, [isWorkspaceMounted, isCompactWorkspace, scheduleGraphResize]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -602,6 +631,14 @@ export const App = () => {
     document.documentElement.dataset.theme = theme;
     window.localStorage.setItem('theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    const query = window.matchMedia(COMPACT_WORKSPACE_QUERY);
+    const update = () => setIsCompactWorkspace(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
 
   useEffect(() => {
     if (!isDocumentDirty) {
@@ -646,11 +683,16 @@ export const App = () => {
   };
 
   const handleNodeDelete = (nodeId: string) => {
-    executeCommand({ type: 'delete-node', graphPath: currentGraphPath(viewStackRef.current), nodeId }, null);
+    const label = getNodeById(nodeId)?.label || nodeId;
+    if (executeCommand({ type: 'delete-node', graphPath: currentGraphPath(viewStackRef.current), nodeId }, null)) {
+      setDocumentStatus(`Deleted ${label} and its connections. Undo is available.`);
+    }
   };
 
   const handleEdgeDelete = (edgeId: string) => {
-    executeCommand({ type: 'delete-edge', graphPath: currentGraphPath(viewStackRef.current), edgeId }, null);
+    if (executeCommand({ type: 'delete-edge', graphPath: currentGraphPath(viewStackRef.current), edgeId }, null)) {
+      setDocumentStatus('Deleted connection. Undo is available.');
+    }
   };
 
   const navigateToDepth = (targetDepth: number, shouldFocusNode = true) => {
@@ -733,11 +775,63 @@ export const App = () => {
 
   const handleExport = () => storeRef.current.getSnapshot().document;
 
+  const handleAddNode = (kind: NodeKind) => {
+    controllerRef.current?.addNode(kind);
+    setDocumentStatus(`Added ${kind} node. Edit it in the Inspector; Undo is available.`);
+  };
+
+  const handleConnectNodes = (sourceId: string, targetId: string) => {
+    if (!sourceId || !targetId) {
+      return 'Choose both a source and a target.';
+    }
+    if (sourceId === targetId) {
+      return 'Choose two different nodes.';
+    }
+    const path = currentGraphPath(viewStackRef.current);
+    const graph = getGraphAtPath(graphDocumentToRuntimeGraph(storeRef.current.getSnapshot().document), path);
+    const source = graph.nodes.find((node) => node.id === sourceId);
+    const target = graph.nodes.find((node) => node.id === targetId);
+    if (!source || !target) {
+      return 'The selected node is no longer available.';
+    }
+    const baseId = `edge-${sourceId}-${targetId}-${Date.now()}`;
+    const candidate = getConnectionCandidates(source, target)
+      .map((ports, index) => ({
+        id: `${baseId}-${index + 1}`,
+        source: sourceId,
+        target: targetId,
+        kind: 'flow' as const,
+        weight: 1,
+        lagMonths: 0,
+        ...ports,
+      }))
+      .find((edge) => validateConnection(graph, edge, simulationSettings).valid);
+    if (!candidate) {
+      const first = getConnectionCandidates(source, target)[0];
+      if (!first) {
+        return 'No compatible ports are available.';
+      }
+      const validation = validateConnection(
+        graph,
+        { id: baseId, source: sourceId, target: targetId, kind: 'flow', weight: 1, lagMonths: 0, ...first },
+        simulationSettings,
+      );
+      return validation.valid ? 'No compatible ports are available.' : validation.reason;
+    }
+    const selection: DocumentSelection = { graphPath: path, kind: 'edge', id: candidate.id, focus: true };
+    if (!executeCommand({ type: 'add-edge', graphPath: path, edge: candidate }, selection)) {
+      return 'The connection could not be created.';
+    }
+    setDocumentStatus(`Connected ${source.label || source.id} to ${target.label || target.id}. Undo is available.`);
+    return undefined;
+  };
+
   const handleImportText = (text: string) => {
     try {
       const candidate = parseGraphDocumentText(text);
       storageRef.current?.rememberLegacyImport(text);
       executeCommand({ type: 'replace-document', document: candidate }, null);
+      setDocumentStatus('Opened project. The previous document is available through Undo.');
       return undefined;
     } catch (error) {
       return error instanceof Error ? error.message : 'Import validation failed.';
@@ -783,10 +877,50 @@ export const App = () => {
       setSelectedNode(nodeData ? { ...nodeData } : null);
       setSelectedIdentity(identity);
     });
+    if (isCompactWorkspace) {
+      setActiveCompactTab('inspector');
+    }
+  };
+
+  const handleHierarchySelectEdge = (graphPath: readonly string[], edgeId: string) => {
+    const controller = controllerRef.current;
+    if (!controller) {
+      if (isCompactWorkspace) {
+        setActiveCompactTab('graph');
+      }
+      return;
+    }
+    const rootGraph = graphDocumentToRuntimeGraph(storeRef.current.getSnapshot().document);
+    const nextStack = buildViewStack(rootGraph, graphPath);
+    const targetGraph = getGraphAtPath(rootGraph, graphPath);
+    const edge = targetGraph.edges.find((candidate) => candidate.id === edgeId);
+    if (!edge) {
+      return;
+    }
+    viewStackRef.current = nextStack;
+    setViewStack(nextStack);
+    const selection: DocumentSelection = { graphPath, kind: 'edge', id: edgeId, focus: true };
+    controller.projectGraph(targetGraph, graphPath, selection, storeRef.current.getSnapshot().document.settings.simulation);
+    storeRef.current.setSelection(selection);
+    setSelectedNode(null);
+    setSelectedIdentity(undefined);
+    setSelectedEdge({ ...edge });
+    if (isCompactWorkspace) {
+      setActiveCompactTab('inspector');
+    }
   };
 
   useEffect(() => {
     const handleHistoryKey = (event: KeyboardEvent) => {
+      if (isCompactWorkspace && event.altKey && !event.ctrlKey && !event.metaKey) {
+        const tab = event.key === '1' ? 'graph' : event.key === '2' ? 'hierarchy' : event.key === '3' ? 'inspector' : undefined;
+        if (tab) {
+          event.preventDefault();
+          setActiveCompactTab(tab);
+          scheduleFrame(() => document.getElementById(`compact-tab-${tab}`)?.focus());
+          return;
+        }
+      }
       if (!(event.ctrlKey || event.metaKey) || event.altKey) {
         return;
       }
@@ -808,7 +942,7 @@ export const App = () => {
     };
     document.addEventListener('keydown', handleHistoryKey);
     return () => document.removeEventListener('keydown', handleHistoryKey);
-  }, []);
+  }, [isCompactWorkspace, scheduleFrame]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -819,7 +953,25 @@ export const App = () => {
 
   useEffect(() => {
     scheduleGraphResize();
-  }, [scheduleGraphResize, workspaceState.layout]);
+  }, [activeCompactTab, scheduleGraphResize, workspaceState.layout]);
+
+  useEffect(() => {
+    const handleViewportResize = () => {
+      scheduleFrame(() => {
+        const controller = controllerRef.current;
+        if (!controller) {
+          return;
+        }
+        controller.cy.resize();
+        if (controller.cy.nodes().length > 0) {
+          controller.cy.fit(undefined, isCompactWorkspace ? 24 : 40);
+        }
+      });
+    };
+    window.addEventListener('resize', handleViewportResize);
+    handleViewportResize();
+    return () => window.removeEventListener('resize', handleViewportResize);
+  }, [isCompactWorkspace, scheduleFrame]);
 
   const handleWorkspaceLayoutChange = (nextLayout: Layout) => {
     setWorkspaceState((current) => {
@@ -864,6 +1016,7 @@ export const App = () => {
 
   const displayNodeScale = nodeScale / DEFAULT_NODE_SCALE;
   const activeGraphPath = currentGraphPath(viewStack);
+  const activeGraph = getGraphAtPath(graphSnapshot, activeGraphPath);
   const breadcrumbs = buildBreadcrumbs(viewStack);
   const workspaceGridRows = Math.max(WORKSPACE_MIN_ROWS, getLayoutBottom(workspaceState.layout) + 6);
   const workspaceGridHeight =
@@ -871,14 +1024,18 @@ export const App = () => {
     Math.max(0, workspaceGridRows - 1) * WORKSPACE_GRID_MARGIN[1] +
     WORKSPACE_GRID_PADDING[1] * 2;
 
-  const renderPanelContent = (panel: PanelInstance) => {
+  const renderPanelContent = (panel: PanelInstance, isCompactPanel = false) => {
     if (panel.type === 'graph') {
       return (
         <WorkspacePanel title={panel.title} bodyClassName="workspace-panel-body-graph">
           <div className="canvas-wrapper">
             <Toolbar
-              onExport={handleExport}
-              onImportText={handleImportText}
+              onSave={handleExport}
+              onOpenText={handleImportText}
+              onAddNode={handleAddNode}
+              onConnectNodes={handleConnectNodes}
+              nodes={activeGraph.nodes}
+              selectedNodeId={selectedNode?.id}
               onUndo={handleUndo}
               onRedo={handleRedo}
               canUndo={storeSnapshot.canUndo}
@@ -905,7 +1062,29 @@ export const App = () => {
               theme={theme}
               onToggleTheme={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
             />
-            <div className="canvas" ref={containerRef} />
+            <section className="graph-summary" aria-label="Graph error summary">
+              <span>{activeGraph.nodes.length} nodes, {activeGraph.edges.length} connections.</span>
+              <span className={diagnostics.length > 0 ? 'graph-summary-errors' : ''}>
+                {diagnostics.length === 0 ? 'No compute errors.' : `${diagnostics.length} compute or validation error${diagnostics.length === 1 ? '' : 's'}. See the Inspector and graph structure for details.`}
+              </span>
+            </section>
+            <div className="canvas-stage">
+              <div
+                className="canvas"
+                ref={containerRef}
+                tabIndex={0}
+                role="region"
+                aria-label="Visual graph canvas"
+                aria-describedby="canvas-keyboard-help"
+              />
+              <p id="canvas-keyboard-help" className="sr-only">Use the visible Add and Connect controls for keyboard authoring. Press Shift and F10 on the canvas to open the add menu.</p>
+              {activeGraph.nodes.length === 0 && (
+                <div className="canvas-onboarding" role="note">
+                  <strong>Start with Add.</strong>
+                  <span>Select nodes in Graph structure, use Connect, then edit values in the Inspector.</span>
+                </div>
+              )}
+            </div>
           </div>
         </WorkspacePanel>
       );
@@ -913,21 +1092,24 @@ export const App = () => {
 
     if (panel.type === 'hierarchy') {
       return (
-        <WorkspacePanel title={panel.title} isClosable onClose={() => handleClosePanel(panel.id)}>
+        <WorkspacePanel title={panel.title} isClosable={!isCompactPanel} onClose={() => handleClosePanel(panel.id)}>
           <HierarchyPanel
             graph={graphSnapshot}
             selectedIdentity={selectedIdentity}
+            selectedEdgeId={selectedEdge?.id}
             activeGraphPath={activeGraphPath}
+            diagnostics={diagnostics}
             isFocusEnabled={isHierarchyFocusEnabled}
             onToggleFocus={() => setIsHierarchyFocusEnabled((prev) => !prev)}
             onSelectNode={handleHierarchySelectNode}
+            onSelectEdge={handleHierarchySelectEdge}
           />
         </WorkspacePanel>
       );
     }
 
     return (
-      <WorkspacePanel title={panel.title} isClosable onClose={() => handleClosePanel(panel.id)}>
+      <WorkspacePanel title={panel.title} isClosable={!isCompactPanel} onClose={() => handleClosePanel(panel.id)}>
         <InspectorPanel
           node={selectedNode}
           edge={selectedEdge}
@@ -944,51 +1126,92 @@ export const App = () => {
     );
   };
 
+  const compactPanels: PanelInstance[] = [
+    { id: 'compact-graph', type: 'graph', title: 'Graph' },
+    { id: 'compact-hierarchy', type: 'hierarchy', title: 'Graph structure' },
+    { id: 'compact-inspector', type: 'inspector', title: 'Inspector' },
+  ];
+
   return (
     <div className="app">
-      <div className="workspace-actions">
-        <button type="button" onClick={() => handleAddPanel('hierarchy')}>
-          Add Hierarchy
-        </button>
-        <button type="button" onClick={() => handleAddPanel('inspector')}>
-          Add Inspector
-        </button>
-        <button type="button" className="workspace-action-secondary" onClick={handleResetWorkspace}>
-          Reset Layout
-        </button>
-      </div>
-      <div className="workspace-grid-host" ref={setWorkspaceHostRef}>
-        {isWorkspaceMounted && (
-          <ReactGridLayout
-            width={workspaceWidth}
-            layout={workspaceState.layout}
-            autoSize={false}
-            style={{ height: workspaceGridHeight }}
-            gridConfig={{
-              cols: WORKSPACE_GRID_COLS,
-              rowHeight: WORKSPACE_ROW_HEIGHT,
-              margin: WORKSPACE_GRID_MARGIN,
-              containerPadding: WORKSPACE_GRID_PADDING,
-            }}
-            dragConfig={{
-              enabled: true,
-              handle: '.workspace-panel-header',
-              cancel: 'button,input,select,textarea,label,a,.canvas,.react-resizable-handle',
-              bounded: true,
-            }}
-            resizeConfig={{ enabled: true, handles: WORKSPACE_RESIZE_HANDLES }}
-            compactor={workspaceCompactor}
-            onLayoutChange={handleWorkspaceLayoutChange}
-            onResize={scheduleGraphResize}
-            onResizeStop={scheduleGraphResize}
-            onDragStop={scheduleGraphResize}
-          >
-            {workspaceState.panels.map((panel) => (
-              <div key={panel.id}>{renderPanelContent(panel)}</div>
+      <header className="app-header">
+        <h1>EconGraph authoring</h1>
+        <span>Build and inspect a typed simulation graph.</span>
+      </header>
+      {isCompactWorkspace ? (
+        <main className="compact-workspace">
+          <div className="compact-tabs" role="tablist" aria-label="Authoring views">
+            {compactPanels.map((panel) => (
+              <button
+                key={panel.type}
+                id={`compact-tab-${panel.type}`}
+                type="button"
+                role="tab"
+                aria-keyshortcuts={`Alt+${panel.type === 'graph' ? '1' : panel.type === 'hierarchy' ? '2' : '3'}`}
+                aria-selected={activeCompactTab === panel.type}
+                aria-controls={`compact-panel-${panel.type}`}
+                tabIndex={activeCompactTab === panel.type ? 0 : -1}
+                onClick={() => setActiveCompactTab(panel.type)}
+                onKeyDown={(event) => {
+                  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+                    return;
+                  }
+                  event.preventDefault();
+                  const index = compactPanels.findIndex((item) => item.type === activeCompactTab);
+                  const delta = event.key === 'ArrowRight' ? 1 : -1;
+                  const next = compactPanels[(index + delta + compactPanels.length) % compactPanels.length].type;
+                  setActiveCompactTab(next);
+                  scheduleFrame(() => document.getElementById(`compact-tab-${next}`)?.focus());
+                }}
+              >
+                {panel.title}
+              </button>
             ))}
-          </ReactGridLayout>
-        )}
-      </div>
+          </div>
+          <div className="compact-panel-stack">
+            {compactPanels.map((panel) => (
+              <div
+                key={panel.type}
+                id={`compact-panel-${panel.type}`}
+                className="compact-tab-panel"
+                role="tabpanel"
+                aria-labelledby={`compact-tab-${panel.type}`}
+                hidden={activeCompactTab !== panel.type}
+              >
+                {renderPanelContent(panel, true)}
+              </div>
+            ))}
+          </div>
+        </main>
+      ) : (
+        <main className="desktop-workspace">
+          <div className="workspace-actions">
+            <button type="button" onClick={() => handleAddPanel('hierarchy')}>Add graph structure</button>
+            <button type="button" onClick={() => handleAddPanel('inspector')}>Add Inspector</button>
+            <button type="button" className="workspace-action-secondary" onClick={handleResetWorkspace}>Reset layout</button>
+          </div>
+          <div className="workspace-grid-host" ref={setWorkspaceHostRef}>
+            {isWorkspaceMounted && (
+              <ReactGridLayout
+                width={workspaceWidth}
+                layout={workspaceState.layout}
+                autoSize={false}
+                style={{ height: workspaceGridHeight }}
+                gridConfig={{ cols: WORKSPACE_GRID_COLS, rowHeight: WORKSPACE_ROW_HEIGHT, margin: WORKSPACE_GRID_MARGIN, containerPadding: WORKSPACE_GRID_PADDING }}
+                dragConfig={{ enabled: true, handle: '.workspace-panel-header', cancel: 'button,input,select,textarea,label,a,.canvas,.react-resizable-handle', bounded: true }}
+                resizeConfig={{ enabled: true, handles: WORKSPACE_RESIZE_HANDLES }}
+                compactor={workspaceCompactor}
+                onLayoutChange={handleWorkspaceLayoutChange}
+                onResize={scheduleGraphResize}
+                onResizeStop={scheduleGraphResize}
+                onDragStop={scheduleGraphResize}
+              >
+                {workspaceState.panels.map((panel) => <div key={panel.id}>{renderPanelContent(panel)}</div>)}
+              </ReactGridLayout>
+            )}
+          </div>
+        </main>
+      )}
     </div>
   );
 };

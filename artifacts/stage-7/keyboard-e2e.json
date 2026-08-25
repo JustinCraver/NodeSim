@@ -1,0 +1,52 @@
+{
+  "surface": "Codex in-app Chromium browser",
+  "viewport": {
+    "width": 1024,
+    "height": 900
+  },
+  "steps": [
+    {
+      "action": "Alt+A",
+      "result": "Add menu opened with Value initially focused"
+    },
+    {
+      "action": "Escape",
+      "result": "Add menu closed and focus returned to Add"
+    },
+    {
+      "action": "Enter on Value",
+      "result": "Node count changed from 3 to 4 and Undo became available"
+    },
+    {
+      "action": "Alt+C, then Alt+Enter",
+      "result": "Connect dialog focused the source field and connection count changed from 2 to 3"
+    },
+    {
+      "action": "Alt+2, then Enter on Node 4 in the semantic tree",
+      "result": "Inspector tab opened with the selected node Value field"
+    },
+    {
+      "action": "Enter with numeric draft '-'",
+      "result": "Draft remained editable; aria-invalid=true described Value must be a finite number"
+    },
+    {
+      "action": "Enter with numeric draft '42.5'",
+      "result": "Value committed once and the field error cleared"
+    },
+    {
+      "action": "Enter on Undo and Redo",
+      "result": "Semantic readback changed from 55 to 42.5, then returned to 55"
+    },
+    {
+      "action": "Enter on Save",
+      "result": "Visible status changed to Project save started. Check browser downloads."
+    },
+    {
+      "action": "Open fixture through the native file input, then Enter on Undo",
+      "result": "Opened fixture showed 3 nodes and 2 connections; Undo restored 4 nodes and 3 connections"
+    }
+  ],
+  "limitations": [
+    "The browser harness did not surface its operating-system file chooser when Enter was injected into the native file input. The Open control is a rendered, named, focusable native file input and functional file selection was verified through the harness file chooser, but keyboard operation inside the operating-system picker remains manual evidence."
+  ]
+}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type React from 'react';
 import {
   graphDocumentToRuntimeGraph,
@@ -22,6 +22,7 @@ import type {
   TimeUnit,
   ValueType,
 } from '../models/types';
+import { NumericDraftField } from './NumericDraftField';
 
 const TIME_UNIT_OPTIONS: { value: TimeUnit; label: string }[] = [
   { value: 'per_day', label: 'Per Day' },
@@ -93,9 +94,9 @@ const DiagnosticList = ({ diagnostics }: { diagnostics: readonly ComputeDiagnost
           <div>{diagnostic.message}</div>
           <div className="diagnostic-context">
             path {diagnostic.graphPath}
-            {diagnostic.nodeId ? ` · node ${diagnostic.nodeId}` : ''}
-            {diagnostic.edgeId ? ` · edge ${diagnostic.edgeId}` : ''}
-            {diagnostic.portId ? ` · port ${diagnostic.portId}` : ''}
+            {diagnostic.nodeId ? `, node ${diagnostic.nodeId}` : ''}
+            {diagnostic.edgeId ? `, connection ${diagnostic.edgeId}` : ''}
+            {diagnostic.portId ? `, port ${diagnostic.portId}` : ''}
           </div>
           {diagnostic.cause && <div className="diagnostic-cause">{diagnostic.cause}</div>}
         </div>
@@ -118,6 +119,8 @@ export const InspectorPanel = ({
 }: InspectorPanelProps) => {
   const [internalGraphText, setInternalGraphText] = useState('');
   const [internalGraphError, setInternalGraphError] = useState<string | null>(null);
+  const internalGraphId = useId();
+  const internalGraphErrorId = `${internalGraphId}-error`;
 
   useEffect(() => {
     if (node?.kind !== 'custom') {
@@ -174,7 +177,7 @@ export const InspectorPanel = ({
         <div className="panel-section">
           <div className="label">Connection</div>
           <div>
-            {edge.source} → {edge.target}
+            {edge.source} to {edge.target}
           </div>
         </div>
         <div className="panel-section">
@@ -221,29 +224,11 @@ export const InspectorPanel = ({
             </select>
           </label>
         )}
-        <label className="panel-section">
-          <span className="label">Weight</span>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={edge.weight ?? 1}
-            onChange={(event) => onChangeEdge(edge.id, { weight: Number(event.target.value) })}
-          />
-        </label>
-        <label className="panel-section">
-          <span className="label">Lag (months)</span>
-          <input
-            type="number"
-            min="0"
-            max={MAX_HORIZON_MONTHS}
-            step="1"
-            value={edge.lagMonths ?? 0}
-            onChange={(event) => onChangeEdge(edge.id, { lagMonths: Number(event.target.value) })}
-          />
-        </label>
+        <NumericDraftField className="panel-section" label="Weight" min={0} step={0.01} value={edge.weight ?? 1} onCommit={(value) => onChangeEdge(edge.id, { weight: value })} />
+        <NumericDraftField className="panel-section" label="Lag (months)" min={0} max={MAX_HORIZON_MONTHS} integer value={edge.lagMonths ?? 0} onCommit={(value) => onChangeEdge(edge.id, { lagMonths: value })} />
         <div className="panel-section">
           <button
+            type="button"
             className="delete-button"
             onClick={() => onDeleteEdge(edge.id)}
             style={{
@@ -257,8 +242,9 @@ export const InspectorPanel = ({
               marginTop: '24px',
             }}
           >
-            Delete Connection
+            Delete connection (Undo available)
           </button>
+          <p className="destructive-help">Removes this connection. Undo restores it.</p>
         </div>
       </div>
     );
@@ -269,15 +255,15 @@ export const InspectorPanel = ({
   }
   const activeNode = node;
   const customConfig = activeNode.custom;
+  const nodeDiagnostics = diagnostics.filter(
+    (diagnostic) => diagnostic.nodeId === activeNode.id && diagnostic.graphPath === graphPath,
+  );
+  const formulaError = activeNode.kind === 'calc' ? nodeDiagnostics[0] : undefined;
+  const formulaErrorId = `${internalGraphId}-formula-error`;
   const bindingDiagnostics =
     activeNode.kind === 'custom' && customConfig
       ? diagnoseCustomBindings(customConfig, graphPath, activeNode.id)
       : [];
-
-  const handleNumberChange = (field: keyof EconNodeData) => (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = Number(event.target.value);
-    onChange(activeNode.id, { [field]: Number.isNaN(value) ? undefined : value } as Partial<EconNodeData>);
-  };
 
   const handleTextChange =
     (field: keyof EconNodeData) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -547,10 +533,7 @@ export const InspectorPanel = ({
       </label>
       {(activeNode.kind === 'income' || activeNode.kind === 'expense') && (
         <>
-          <label className="panel-section">
-            <span className="label">Base Value</span>
-            <input type="number" value={activeNode.baseValue ?? ''} onChange={handleNumberChange('baseValue')} />
-          </label>
+          <NumericDraftField className="panel-section" label="Base value" value={activeNode.baseValue ?? 0} onCommit={(value) => onChange(activeNode.id, { baseValue: value })} />
           <label className="panel-section">
             <span className="label">Time Unit</span>
             <select value={activeNode.timeUnit ?? 'per_month'} onChange={handleTimeUnitChange}>
@@ -564,31 +547,29 @@ export const InspectorPanel = ({
         </>
       )}
       {activeNode.kind === 'value' && (
-        <label className="panel-section">
-          <span className="label">Value</span>
-          <input type="number" value={activeNode.baseValue ?? ''} onChange={handleNumberChange('baseValue')} />
-        </label>
+        <NumericDraftField className="panel-section" label="Value" value={activeNode.baseValue ?? 0} onCommit={(value) => onChange(activeNode.id, { baseValue: value })} />
       )}
       {(activeNode.kind === 'add' ||
         activeNode.kind === 'subtract' ||
         activeNode.kind === 'multiply' ||
         activeNode.kind === 'divide') && (
         <>
-          <label className="panel-section">
-            <span className="label">Input 1 Value</span>
-            <input type="number" value={activeNode.leftValue ?? ''} onChange={handleNumberChange('leftValue')} />
-          </label>
-          <label className="panel-section">
-            <span className="label">Input 2 Value</span>
-            <input type="number" value={activeNode.rightValue ?? ''} onChange={handleNumberChange('rightValue')} />
-          </label>
+          <NumericDraftField className="panel-section" label="Input 1 value" value={activeNode.leftValue ?? 0} onCommit={(value) => onChange(activeNode.id, { leftValue: value })} />
+          <NumericDraftField className="panel-section" label="Input 2 value" value={activeNode.rightValue ?? 0} onCommit={(value) => onChange(activeNode.id, { rightValue: value })} />
         </>
       )}
       {activeNode.kind === 'calc' && (
         <>
           <label className="panel-section">
             <span className="label">Formula</span>
-            <input type="text" value={activeNode.formula ?? ''} onChange={handleTextChange('formula')} />
+            <input
+              type="text"
+              value={activeNode.formula ?? ''}
+              aria-invalid={formulaError ? 'true' : undefined}
+              aria-describedby={formulaError ? formulaErrorId : undefined}
+              onChange={handleTextChange('formula')}
+            />
+            {formulaError && <span id={formulaErrorId} className="field-error">{formulaError.message}</span>}
           </label>
           <label className="panel-section">
             <span className="label">Formula result type</span>
@@ -601,31 +582,12 @@ export const InspectorPanel = ({
       )}
       {activeNode.kind === 'asset' && (
         <>
-          <label className="panel-section">
-            <span className="label">Initial balance</span>
-            <input
-              type="number"
-              min="0"
-              value={activeNode.initialBalance ?? ''}
-              onChange={handleNumberChange('initialBalance')}
-            />
-          </label>
-          <label className="panel-section">
-            <span className="label">Nominal annual rate</span>
-            <input
-              type="number"
-              step="0.001"
-              value={activeNode.interestRateAnnual ?? ''}
-              onChange={handleNumberChange('interestRateAnnual')}
-            />
-          </label>
+          <NumericDraftField className="panel-section" label="Initial balance" min={0} value={activeNode.initialBalance ?? 0} onCommit={(value) => onChange(activeNode.id, { initialBalance: value })} />
+          <NumericDraftField className="panel-section" label="Nominal annual rate" step={0.001} value={activeNode.interestRateAnnual ?? 0} onCommit={(value) => onChange(activeNode.id, { interestRateAnnual: value })} />
         </>
       )}
       {activeNode.kind === 'output' && (
-        <label className="panel-section">
-          <span className="label">Target Amount</span>
-          <input type="number" value={activeNode.targetAmount ?? ''} onChange={handleNumberChange('targetAmount')} />
-        </label>
+        <NumericDraftField className="panel-section" label="Target amount" value={activeNode.targetAmount ?? 0} onCommit={(value) => onChange(activeNode.id, { targetAmount: value })} />
       )}
       {activeNode.kind === 'custom' && customConfig && (
         <>
@@ -652,10 +614,11 @@ export const InspectorPanel = ({
           )}
           <div className="panel-section">
             <div className="label">Inputs</div>
+            <p className="destructive-help">Removing a port also removes incompatible connections. Undo restores both.</p>
             {customConfig.inputs.map((port) => (
               <div
                 key={port.id}
-                style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '12px' }}
+                className="custom-port-row"
               >
                 <input
                   type="text"
@@ -674,9 +637,9 @@ export const InspectorPanel = ({
                     </option>
                   ))}
                 </select>
-                <span style={{ fontSize: '16px', color: '#64748b' }}>{port.id}</span>
+                <span className="custom-port-id">{port.id}</span>
                 <button type="button" onClick={() => removePort('input', port.id)}>
-                  Remove
+                  Remove input
                 </button>
               </div>
             ))}
@@ -689,7 +652,7 @@ export const InspectorPanel = ({
             {customConfig.outputs.map((port) => (
               <div
                 key={port.id}
-                style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '12px' }}
+                className="custom-port-row"
               >
                 <input
                   type="text"
@@ -714,9 +677,9 @@ export const InspectorPanel = ({
                   value={port.formulaId ?? ''}
                   onChange={(event) => updateOutputFormulaId(port.id, event.target.value)}
                 />
-                <span style={{ fontSize: '16px', color: '#64748b' }}>{port.id}</span>
+                <span className="custom-port-id">{port.id}</span>
                 <button type="button" onClick={() => removePort('output', port.id)}>
-                  Remove
+                  Remove output
                 </button>
               </div>
             ))}
@@ -769,14 +732,17 @@ export const InspectorPanel = ({
             ))}
           </div>
           <div className="panel-section">
-            <div className="label">Internal Graph</div>
+            <label className="label" htmlFor={internalGraphId}>Internal graph</label>
             <textarea
+              id={internalGraphId}
               rows={8}
               value={internalGraphText}
+              aria-invalid={internalGraphError ? 'true' : undefined}
+              aria-describedby={internalGraphError ? internalGraphErrorId : undefined}
               onChange={(event) => setInternalGraphText(event.target.value)}
               style={{ width: '100%', marginTop: '12px' }}
             />
-            {internalGraphError && <div style={{ color: '#dc2626', marginTop: '12px' }}>{internalGraphError}</div>}
+            {internalGraphError && <div id={internalGraphErrorId} className="field-error">{internalGraphError}</div>}
             <button type="button" style={{ marginTop: '12px' }} onClick={handleApplyInternalGraph}>
               Apply Internal Graph
             </button>
@@ -795,6 +761,7 @@ export const InspectorPanel = ({
       </div>
       <div className="panel-section">
         <button
+          type="button"
           className="delete-button"
           onClick={() => onDeleteNode(activeNode.id)}
           style={{
@@ -808,8 +775,9 @@ export const InspectorPanel = ({
             marginTop: '24px',
           }}
         >
-          Delete Node
+          Delete node (Undo available)
         </button>
+        <p className="destructive-help">Removes this node and its connections. Undo restores them.</p>
       </div>
     </div>
   );

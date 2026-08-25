@@ -1,0 +1,134 @@
+[
+  {
+    "clippedControls": [],
+    "documentScrollWidth": 1440,
+    "horizontalOverflow": false,
+    "layoutMode": "grid",
+    "nestedHorizontalScroll": [],
+    "offscreenControls": [],
+    "panelOverlaps": [],
+    "requiredActions": {
+      "Add": true,
+      "Connect": true,
+      "Open": true,
+      "Redo": true,
+      "Save": true,
+      "Undo": true
+    },
+    "viewport": {
+      "height": 900,
+      "width": 1440
+    },
+    "visiblePanelCount": 3
+  },
+  {
+    "clippedControls": [],
+    "documentScrollWidth": 1280,
+    "horizontalOverflow": false,
+    "layoutMode": "grid",
+    "nestedHorizontalScroll": [],
+    "offscreenControls": [],
+    "panelOverlaps": [],
+    "requiredActions": {
+      "Add": true,
+      "Connect": true,
+      "Open": true,
+      "Redo": true,
+      "Save": true,
+      "Undo": true
+    },
+    "viewport": {
+      "height": 900,
+      "width": 1280
+    },
+    "visiblePanelCount": 3
+  },
+  {
+    "clippedControls": [],
+    "documentScrollWidth": 1024,
+    "horizontalOverflow": false,
+    "layoutMode": "tabs",
+    "nestedHorizontalScroll": [],
+    "offscreenControls": [],
+    "panelOverlaps": [],
+    "requiredActions": {
+      "Add": true,
+      "Connect": true,
+      "Open": true,
+      "Redo": true,
+      "Save": true,
+      "Undo": true
+    },
+    "viewport": {
+      "height": 900,
+      "width": 1024
+    },
+    "visiblePanelCount": 1
+  },
+  {
+    "clippedControls": [],
+    "documentScrollWidth": 820,
+    "horizontalOverflow": false,
+    "layoutMode": "tabs",
+    "nestedHorizontalScroll": [],
+    "offscreenControls": [],
+    "panelOverlaps": [],
+    "requiredActions": {
+      "Add": true,
+      "Connect": true,
+      "Open": true,
+      "Redo": true,
+      "Save": true,
+      "Undo": true
+    },
+    "viewport": {
+      "height": 900,
+      "width": 820
+    },
+    "visiblePanelCount": 1
+  },
+  {
+    "clippedControls": [],
+    "documentScrollWidth": 640,
+    "horizontalOverflow": false,
+    "layoutMode": "tabs",
+    "nestedHorizontalScroll": [],
+    "offscreenControls": [],
+    "panelOverlaps": [],
+    "requiredActions": {
+      "Add": true,
+      "Connect": true,
+      "Open": true,
+      "Redo": true,
+      "Save": true,
+      "Undo": true
+    },
+    "viewport": {
+      "height": 900,
+      "width": 640
+    },
+    "visiblePanelCount": 1
+  },
+  {
+    "clippedControls": [],
+    "documentScrollWidth": 390,
+    "horizontalOverflow": false,
+    "layoutMode": "tabs",
+    "nestedHorizontalScroll": [],
+    "offscreenControls": [],
+    "panelOverlaps": [],
+    "requiredActions": {
+      "Add": true,
+      "Connect": true,
+      "Open": true,
+      "Redo": true,
+      "Save": true,
+      "Undo": true
+    },
+    "viewport": {
+      "height": 900,
+      "width": 390
+    },
+    "visiblePanelCount": 1
+  }
+]

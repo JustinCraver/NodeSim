@@ -1,0 +1,196 @@
+[
+  {
+    "results": [
+      {
+        "bg": "#1d4ed8",
+        "name": "base",
+        "pass": true,
+        "ratio": 6.7,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#c2410c",
+        "name": "expense",
+        "pass": true,
+        "ratio": 5.18,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#15803d",
+        "name": "calc",
+        "pass": true,
+        "ratio": 5.02,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#92400e",
+        "name": "asset",
+        "pass": true,
+        "ratio": 7.09,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#be185d",
+        "name": "output",
+        "pass": true,
+        "ratio": 6.04,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#7e22ce",
+        "name": "custom",
+        "pass": true,
+        "ratio": 6.98,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#475569",
+        "name": "value",
+        "pass": true,
+        "ratio": 7.58,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#0f766e",
+        "name": "add",
+        "pass": true,
+        "ratio": 5.47,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#b91c1c",
+        "name": "subtract",
+        "pass": true,
+        "ratio": 6.47,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#0e7490",
+        "name": "multiply",
+        "pass": true,
+        "ratio": 5.36,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#b45309",
+        "name": "divide",
+        "pass": true,
+        "ratio": 5.02,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#f8fafc",
+        "name": "text-note",
+        "pass": true,
+        "ratio": 17.06,
+        "text": "#0f172a"
+      },
+      {
+        "bg": "#1e3a8a",
+        "name": "selected",
+        "pass": true,
+        "ratio": 8.4,
+        "text": "#e2e8f0"
+      }
+    ],
+    "theme": "light",
+    "threshold": 4.5
+  },
+  {
+    "results": [
+      {
+        "bg": "#1d4ed8",
+        "name": "base",
+        "pass": true,
+        "ratio": 6.7,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#c2410c",
+        "name": "expense",
+        "pass": true,
+        "ratio": 5.18,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#15803d",
+        "name": "calc",
+        "pass": true,
+        "ratio": 5.02,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#92400e",
+        "name": "asset",
+        "pass": true,
+        "ratio": 7.09,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#be185d",
+        "name": "output",
+        "pass": true,
+        "ratio": 6.04,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#7e22ce",
+        "name": "custom",
+        "pass": true,
+        "ratio": 6.98,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#475569",
+        "name": "value",
+        "pass": true,
+        "ratio": 7.58,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#0f766e",
+        "name": "add",
+        "pass": true,
+        "ratio": 5.47,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#b91c1c",
+        "name": "subtract",
+        "pass": true,
+        "ratio": 6.47,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#0e7490",
+        "name": "multiply",
+        "pass": true,
+        "ratio": 5.36,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#b45309",
+        "name": "divide",
+        "pass": true,
+        "ratio": 5.02,
+        "text": "#ffffff"
+      },
+      {
+        "bg": "#111827",
+        "name": "text-note",
+        "pass": true,
+        "ratio": 16.96,
+        "text": "#f8fafc"
+      },
+      {
+        "bg": "#2563eb",
+        "name": "selected",
+        "pass": true,
+        "ratio": 4.94,
+        "text": "#f8fafc"
+      }
+    ],
+    "theme": "dark",
+    "threshold": 4.5
+  }
+]

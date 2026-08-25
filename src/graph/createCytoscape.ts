@@ -22,6 +22,7 @@ type GraphCallbacks = {
   onCommand?: (command: DocumentCommand, selection?: DocumentSelection) => void;
   onConnectionRejected?: (reason: string) => void;
   onDiagnostics?: (diagnostics: ComputeDiagnostic[]) => void;
+  onGraphComputed?: (graph: GraphData, graphPath: GraphPath) => void;
 };
 
 const BASIC_NODE_OPTIONS: { kind: NodeKind; label: string }[] = [
@@ -119,6 +120,7 @@ type ThemePalette = {
     baseBg: string;
     baseBorder: string;
     baseText: string;
+    noteText: string;
     selectedBg: string;
     selectedBorder: string;
     selectedText: string;
@@ -160,6 +162,7 @@ const readThemePalette = (): ThemePalette => {
       baseBg: readVar('--cy-node-bg', '#2563eb'),
       baseBorder: readVar('--cy-node-border', '#1e3a8a'),
       baseText: readVar('--cy-node-text', '#0f172a'),
+      noteText: readVar('--cy-node-note-text', '#0f172a'),
       selectedBg: readVar('--cy-node-selected-bg', '#1d4ed8'),
       selectedBorder: readVar('--cy-node-selected-border', '#0ea5e9'),
       selectedText: readVar('--cy-node-selected-text', '#e2e8f0'),
@@ -578,11 +581,6 @@ const buildStyles = (palette: ThemePalette) =>
       'background-color': palette.node.selectedBg,
       color: palette.node.selectedText,
       opacity: 1,
-      'shadow-blur': 18,
-      'shadow-color': 'data(glowColor)',
-      'shadow-opacity': 0.85,
-      'shadow-offset-x': 0,
-      'shadow-offset-y': 0,
     },
   },
   {
@@ -591,11 +589,6 @@ const buildStyles = (palette: ThemePalette) =>
       'border-width': 7,
       'border-color': palette.node.hoverBorder,
       opacity: 1,
-      'shadow-blur': 12,
-      'shadow-color': 'data(glowColor)',
-      'shadow-opacity': 0.75,
-      'shadow-offset-x': 0,
-      'shadow-offset-y': 0,
     },
   },
   {
@@ -630,11 +623,6 @@ const buildStyles = (palette: ThemePalette) =>
       width: 3,
       'line-color': palette.edge.selected,
       'target-arrow-color': palette.edge.selected,
-      'shadow-blur': 12,
-      'shadow-color': palette.edge.hoverGlow,
-      'shadow-opacity': 0.85,
-      'shadow-offset-x': 0,
-      'shadow-offset-y': 0,
     },
   },
   {
@@ -715,7 +703,7 @@ const buildStyles = (palette: ThemePalette) =>
       'text-wrap': 'wrap',
       'text-max-width': 'data(textMaxWidth)',
       'font-size': TEXT_BASE_FONT_SIZE,
-      color: palette.node.baseText,
+      color: palette.node.noteText,
     },
   },
   {
@@ -780,6 +768,14 @@ export const createCytoscape = (
   const runRecompute = () => {
     const result = recompute(cy, nodeScale, themePalette, simulationSettings, formatGraphPath(graphPath));
     callbacks.onDiagnostics?.(result.diagnostics);
+    callbacks.onGraphComputed?.(
+      {
+        nodes: result.nodes.map((node) => ({ ...node })),
+        edges: cy.edges().map((edge) => ({ ...(edge.data() as EconEdgeData) })),
+        nodeScale,
+      },
+      graphPath,
+    );
     return result;
   };
 
@@ -900,9 +896,30 @@ export const createCytoscape = (
   let edgePortMenu: HTMLDivElement | null = null;
   let pendingEdgeTarget: NodeSingular | null = null;
   let pendingEdgeSource: NodeSingular | null = null;
+  let menuReturnFocus: HTMLElement | null = null;
   type ConnectionMenuOption = { label: string; sourcePort?: string; targetPort?: string };
 
-  const createNodeAt = (position: { x: number; y: number }, kind: NodeKind) => {
+  const focusFirstMenuItem = (menu: HTMLElement) => {
+    lifecycle.requestAnimationFrame(() => menu.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus());
+  };
+
+  const handleMenuKeyDown = (menu: HTMLElement, event: KeyboardEvent, close: () => void) => {
+    const items = Array.from(menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'));
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const delta = event.key === 'ArrowDown' ? 1 : -1;
+      items[(current + delta + items.length) % items.length]?.focus();
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      items[event.key === 'Home' ? 0 : items.length - 1]?.focus();
+    }
+  };
+
+  const createNodeAt = (position: { x: number; y: number } | undefined, kind: NodeKind) => {
     const id = `node_${Date.now()}_${nodeSequence}`;
     const label = kind === 'text' ? 'Text' : `Node ${cy.nodes().length + 1}`;
     nodeSequence += 1;
@@ -973,28 +990,38 @@ export const createCytoscape = (
     if (kind === 'text') {
       Object.assign(node, buildTextLayout(label, nodeScale));
     }
-    node.position = { ...position };
+    if (position) {
+      node.position = { ...position };
+    }
     callbacks.onCommand?.(
       { type: 'add-node', graphPath, node },
       { graphPath, kind: 'node', id, focus: true },
     );
   };
 
-  const hideContextMenu = () => {
+  const hideContextMenu = (restoreFocus = false) => {
     if (!contextMenu) {
       return;
     }
     contextMenu.style.display = 'none';
     pendingCreatePosition = null;
+    if (restoreFocus) {
+      menuReturnFocus?.focus();
+      menuReturnFocus = null;
+    }
   };
 
-  const hideEdgePortMenu = () => {
+  const hideEdgePortMenu = (restoreFocus = false) => {
     if (!edgePortMenu) {
       return;
     }
     edgePortMenu.style.display = 'none';
     pendingEdgeTarget = null;
     pendingEdgeSource = null;
+    if (restoreFocus) {
+      menuReturnFocus?.focus();
+      menuReturnFocus = null;
+    }
   };
 
   const showEdgePortMenu = (
@@ -1007,9 +1034,12 @@ export const createCytoscape = (
       const menu = document.createElement('div');
       menu.className = 'context-menu';
       menu.style.display = 'none';
+      menu.setAttribute('role', 'menu');
+      menu.setAttribute('aria-label', 'Compatible connection ports');
       menu.addEventListener('click', (event) => {
         event.stopPropagation();
       });
+      menu.addEventListener('keydown', (event) => handleMenuKeyDown(menu, event, () => hideEdgePortMenu(true)));
       container.appendChild(menu);
       lifecycle.ownElement(menu);
       edgePortMenu = menu;
@@ -1023,6 +1053,7 @@ export const createCytoscape = (
     menu.replaceChildren();
     const heading = document.createElement('div');
     heading.className = 'context-menu-section';
+    heading.setAttribute('role', 'presentation');
     heading.textContent = title;
     menu.appendChild(heading);
 
@@ -1056,15 +1087,17 @@ export const createCytoscape = (
     options.forEach((option) => {
       const button = document.createElement('button');
       button.type = 'button';
+      button.setAttribute('role', 'menuitem');
       button.textContent = option.label;
       button.addEventListener('click', () => {
         addConnection(option);
-        hideEdgePortMenu();
+        hideEdgePortMenu(true);
       });
       menu.appendChild(button);
     });
 
     pendingEdgeTarget = targetNode;
+    menuReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : container;
     menu.style.display = 'flex';
     menu.style.left = `${renderedPosition.x}px`;
     menu.style.top = `${renderedPosition.y}px`;
@@ -1075,6 +1108,7 @@ export const createCytoscape = (
     const clampedY = Math.max(8, Math.min(renderedPosition.y, maxY));
     menu.style.left = `${clampedX}px`;
     menu.style.top = `${clampedY}px`;
+    focusFirstMenuItem(menu);
   };
 
   const showContextMenu = (renderedPosition: { x: number; y: number }, position: { x: number; y: number }) => {
@@ -1082,24 +1116,29 @@ export const createCytoscape = (
       const menu = document.createElement('div');
       menu.className = 'context-menu';
       menu.style.display = 'none';
+      menu.setAttribute('role', 'menu');
+      menu.setAttribute('aria-label', 'Add node');
       menu.addEventListener('click', (event) => {
         event.stopPropagation();
       });
+      menu.addEventListener('keydown', (event) => handleMenuKeyDown(menu, event, () => hideContextMenu(true)));
       const addSection = (title: string, options: { kind: NodeKind; label: string }[]) => {
         const heading = document.createElement('div');
         heading.className = 'context-menu-section';
+        heading.setAttribute('role', 'presentation');
         heading.textContent = title;
         menu.appendChild(heading);
         options.forEach((option) => {
           const button = document.createElement('button');
           button.type = 'button';
+          button.setAttribute('role', 'menuitem');
           button.textContent = option.label;
           button.addEventListener('click', () => {
             if (!pendingCreatePosition) {
               return;
             }
             createNodeAt(pendingCreatePosition, option.kind);
-            hideContextMenu();
+            hideContextMenu(true);
           });
           menu.appendChild(button);
         });
@@ -1108,10 +1147,12 @@ export const createCytoscape = (
       addSection('Basic Math', BASIC_NODE_OPTIONS);
       const divider = document.createElement('div');
       divider.className = 'context-menu-divider';
+      divider.setAttribute('role', 'separator');
       menu.appendChild(divider);
       addSection('Economy', ECON_NODE_OPTIONS);
       const dividerText = document.createElement('div');
       dividerText.className = 'context-menu-divider';
+      dividerText.setAttribute('role', 'separator');
       menu.appendChild(dividerText);
       addSection('Text', TEXT_NODE_OPTIONS);
       container.appendChild(menu);
@@ -1120,6 +1161,7 @@ export const createCytoscape = (
     }
 
     pendingCreatePosition = position;
+    menuReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : container;
     contextMenu.style.display = 'flex';
     contextMenu.style.left = `${renderedPosition.x}px`;
     contextMenu.style.top = `${renderedPosition.y}px`;
@@ -1130,7 +1172,30 @@ export const createCytoscape = (
     const clampedY = Math.max(8, Math.min(renderedPosition.y, maxY));
     contextMenu.style.left = `${clampedX}px`;
     contextMenu.style.top = `${clampedY}px`;
+    focusFirstMenuItem(contextMenu);
   };
+
+  const addNodeAtViewportCenter = (kind: NodeKind) => {
+    const extent = cy.extent();
+    const centerX = (extent.x1 + extent.x2) / 2;
+    const nodes = cy.nodes();
+    const y = nodes.length === 0
+      ? (extent.y1 + extent.y2) / 2
+      : Math.max(...nodes.map((node) => node.position().y)) + scaleValue(BASE_NODE_HEIGHT, nodeScale) + 80;
+    createNodeAt({ x: centerX, y }, kind);
+  };
+
+  lifecycle.listen(container, 'keydown', ((event: KeyboardEvent) => {
+    if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) {
+      return;
+    }
+    event.preventDefault();
+    const extent = cy.extent();
+    showContextMenu(
+      { x: container.clientWidth / 2, y: container.clientHeight / 2 },
+      { x: (extent.x1 + extent.x2) / 2, y: (extent.y1 + extent.y2) / 2 },
+    );
+  }) as EventListener);
 
   cy.on('cxttap', (event) => {
     if (event.target !== cy) {
@@ -1182,7 +1247,7 @@ export const createCytoscape = (
         ...targetOption,
         label:
           sourceOptions.length > 1 || targetOptions.length > 1
-            ? `${sourceOption.label} → ${targetOption.label}`
+            ? `${sourceOption.label} to ${targetOption.label}`
             : 'Create connection',
       })),
     );
@@ -1255,7 +1320,7 @@ export const createCytoscape = (
   };
 
   lifecycle.listen(document, 'pointerdown', handleGlobalPointerDown as EventListener, true);
-  lifecycle.listen(container, 'scroll', hideContextMenu as EventListener);
+  lifecycle.listen(container, 'scroll', (() => hideContextMenu()) as EventListener);
 
   const projectGraph = (
     data: GraphData,
@@ -1263,6 +1328,16 @@ export const createCytoscape = (
     selection?: DocumentSelection,
     nextSimulationSettings: SimulationSettingsV1 = simulationSettings,
   ) => {
+    const canReuseRenderedPositions =
+      graphPath.length === nextGraphPath.length && graphPath.every((part, index) => part === nextGraphPath[index]);
+    const renderedPositions = canReuseRenderedPositions
+      ? new Map(cy.nodes().map((node) => [node.id(), { ...node.position() }]))
+      : new Map<string, { x: number; y: number }>();
+    const projectedNodes = data.nodes.map((node) =>
+      hasValidPosition(node.position) || !renderedPositions.has(node.id)
+        ? node
+        : { ...node, position: renderedPositions.get(node.id)! },
+    );
     graphPath = Object.freeze([...nextGraphPath]);
     simulationSettings = { ...nextSimulationSettings };
     if (data.nodeScale !== undefined) {
@@ -1272,11 +1347,11 @@ export const createCytoscape = (
     isProjecting = true;
     cy.batch(() => {
       cy.elements().remove();
-      cy.add(data.nodes.map((node) => toCyNodeElement(node)));
+      cy.add(projectedNodes.map((node) => toCyNodeElement(node)));
       cy.add(data.edges.map((edge) => ({ data: edge })));
     });
     runRecompute();
-    const hasPositions = hasMeaningfulPositions(data.nodes);
+    const hasPositions = hasMeaningfulPositions(projectedNodes);
     if (hasPositions) {
       cy.layout({ name: 'preset' }).run();
     } else {
@@ -1285,21 +1360,13 @@ export const createCytoscape = (
     if (data.nodes.length > 0) {
       cy.fit(undefined, 40);
     }
-    let selectedElement: ReturnType<typeof cy.getElementById> | undefined;
     if (selection && selection.graphPath.length === graphPath.length && selection.graphPath.every((part, index) => part === graphPath[index])) {
       const element = cy.getElementById(selection.id);
       if (element && !element.empty()) {
         element.select();
-        selectedElement = element;
       }
     }
     isProjecting = false;
-    if (selection?.focus && selectedElement) {
-      cy.animate(
-        { center: { eles: selectedElement }, zoom: Math.max(cy.zoom(), 0.75) },
-        { duration: 220 },
-      );
-    }
   };
 
   if (typeof MutationObserver !== 'undefined') {
@@ -1330,6 +1397,7 @@ export const createCytoscape = (
 
   return {
     cy,
+    addNode: addNodeAtViewportCenter,
     projectGraph,
     destroy,
   };
