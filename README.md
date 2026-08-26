@@ -1,52 +1,50 @@
 # NodeSim
 
-NodeSim is a visual editor for advanced simulations.
+NodeSim is a visual editor for typed financial simulation graphs. **NodeSim** is
+the canonical product name; `EconGraph` is retained only as a legacy local-data
+namespace that existing browsers can still read.
 
-## Supported toolchain
+## Setup
 
-Use Node.js `24.18.0` (LTS) and npm `11.16.0`. The Node version is pinned in
-`.nvmrc`; `package.json` pins and validates both tools.
+Use Node.js `24.18.0` and npm `11.16.0`. Both versions are pinned in `.nvmrc`
+and `package.json`; `package-lock.json` is authoritative.
 
 ```powershell
 node --version
 npm.cmd --version
-npm.cmd ci
+npm.cmd ci --no-audit
+npm.cmd run ci:verify
 ```
 
-`package-lock.json` is part of the source tree and must remain committed.
-`node_modules/`, `dist/`, and TypeScript build-info files are generated locally
-and are intentionally not tracked. No deployment target is currently configured,
-so deployment must use a fresh production build rather than committed `dist/`
-files.
-
-## Development server
-
-The default server is intentionally limited to the local machine:
+The default development server is loopback-only:
 
 ```powershell
 npm.cmd run dev
 ```
 
-To opt in to access from other devices on a trusted LAN, bind Vite to all
-interfaces explicitly:
-
-```powershell
-npm.cmd run dev:lan
-```
-
-The LAN command exposes the development server to the network. Use it only on a
-trusted network and stop it when testing is complete.
+`npm.cmd run dev:lan` binds to `0.0.0.0` and is only for an intentional trusted-
+LAN test. Production builds use the exact `/NodeSim/` base path.
 
 ## Verification
 
-```powershell
-npm.cmd run typecheck
-npm.cmd test
-npm.cmd run build
-npm.cmd run check
-```
+`npm.cmd run ci:verify` runs typecheck, focused lint rules, deterministic tests,
+V8 coverage thresholds, duplicate direct-major detection, production build,
+bundle budgets, and deployed-path/header smoke tests. `npm.cmd run check` is the
+shorter developer loop without coverage or deployment smoke.
 
-`check` runs the typecheck, deterministic characterization suite, and production
-build. Pending tests document confirmed defects without making the suite red.
-The proposed semantics contract is recorded in
-[`docs/adr/0001-product-semantics.md`](docs/adr/0001-product-semantics.md).
+Current advisory, outdated-package, and license checks may contact or depend on
+registry state. Run `deps:audit`, `deps:outdated`, and `deps:licenses` only in an
+explicitly authorized environment. The manual GitHub workflow uses the protected
+`dependency-review` environment for that purpose.
+
+## Documentation
+
+- [Product and authoring guide](docs/PRODUCT_GUIDE.md)
+- [Release, deployment, and rollback runbook](docs/RELEASE_OPERATIONS.md)
+- [Approved semantic contract](docs/adr/0001-product-semantics.md)
+- [Audit remediation roadmap](docs/AUDIT_REMEDIATION_ROADMAP.md)
+- [Stage 7 rendered accessibility evidence](artifacts/stage-7/README.md)
+
+NodeSim is a prototype. Its current IEEE-754 calculations are not approved for
+financial-decision support until the ADR's fixed-point/decimal requirement is
+implemented and separately accepted.

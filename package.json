@@ -1,5 +1,5 @@
 {
-  "name": "econgraph",
+  "name": "nodesim",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -24,19 +24,28 @@
     "dev": "vite",
     "dev:lan": "vite --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
+    "lint": "node scripts/lint.mjs",
     "test": "vitest run",
+    "coverage": "node scripts/coverage.mjs",
     "fixtures:semantic": "vitest run tests/semanticFixtures.test.ts",
     "benchmark:large-graph": "vitest run tests/largeGraphBenchmark.test.ts --reporter=verbose",
     "build": "vite build",
-    "check": "npm run typecheck && npm test && npm run build",
+    "bundle:check": "node scripts/bundle-budget.mjs",
+    "smoke:deployed": "node scripts/deployed-smoke.mjs",
+    "deps:duplicates": "node scripts/dependency-majors.mjs",
+    "deps:audit": "npm audit --audit-level=high",
+    "deps:outdated": "npm outdated",
+    "deps:licenses": "node scripts/license-check.mjs",
+    "release:package": "node scripts/create-release.mjs",
+    "check": "npm run typecheck && npm run lint && npm test && npm run build && npm run bundle:check",
+    "ci:verify": "npm run typecheck && npm run lint && npm test && npm run coverage && npm run deps:duplicates && npm run build && npm run bundle:check && npm run smoke:deployed",
     "preview": "vite preview"
   },
   "dependencies": {
     "cytoscape": "^3.27.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-grid-layout": "^2.2.3",
-    "react-resizable": "^4.0.1"
+    "react-grid-layout": "^2.2.3"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",

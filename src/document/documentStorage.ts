@@ -7,10 +7,16 @@ import {
 } from './graphDocument';
 
 export const DOCUMENT_STORAGE_KEYS = {
+  current: 'nodesim.document.v1.current',
+  lastGood: 'nodesim.document.v1.last-good',
+  temporary: 'nodesim.document.v1.temporary',
+  legacyImport: 'nodesim.document.v1.legacy-import',
+} as const;
+
+const LEGACY_DOCUMENT_STORAGE_KEYS = {
   current: 'econgraph.document.v1.current',
   lastGood: 'econgraph.document.v1.last-good',
   temporary: 'econgraph.document.v1.temporary',
-  legacyImport: 'econgraph.document.v1.legacy-import',
 } as const;
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -58,13 +64,17 @@ export class GraphDocumentStorage {
   constructor(private readonly storage: StorageLike) {}
 
   load(fallbackGraph: Parameters<typeof createGraphDocument>[0]): DocumentLoadResult {
-    const currentRaw = this.storage.getItem(DOCUMENT_STORAGE_KEYS.current);
+    const currentRaw = this.storage.getItem(DOCUMENT_STORAGE_KEYS.current)
+      ?? this.storage.getItem(LEGACY_DOCUMENT_STORAGE_KEYS.current);
     const current = parseEnvelope(currentRaw);
     if (current) {
       return { document: current.document, source: 'current', recovered: false };
     }
 
-    const temporary = parseEnvelope(this.storage.getItem(DOCUMENT_STORAGE_KEYS.temporary));
+    const temporary = parseEnvelope(
+      this.storage.getItem(DOCUMENT_STORAGE_KEYS.temporary)
+        ?? this.storage.getItem(LEGACY_DOCUMENT_STORAGE_KEYS.temporary),
+    );
     if (temporary) {
       return {
         document: temporary.document,
@@ -76,7 +86,10 @@ export class GraphDocumentStorage {
       };
     }
 
-    const lastGood = parseEnvelope(this.storage.getItem(DOCUMENT_STORAGE_KEYS.lastGood));
+    const lastGood = parseEnvelope(
+      this.storage.getItem(DOCUMENT_STORAGE_KEYS.lastGood)
+        ?? this.storage.getItem(LEGACY_DOCUMENT_STORAGE_KEYS.lastGood),
+    );
     if (lastGood) {
       return {
         document: lastGood.document,

@@ -300,6 +300,17 @@ body {
   overflow: hidden;
 }
 
+.react-resizable {
+  position: relative;
+}
+
+.react-resizable-handle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+}
+
 .react-grid-item > .react-resizable-handle {
   opacity: 0.65;
   z-index: 4;

@@ -106,7 +106,7 @@ export const Toolbar = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'econgraph-v1.json';
+    link.download = 'nodesim-v1.json';
     link.click();
     URL.revokeObjectURL(url);
     setActionStatus('Project save started. Check browser downloads.');

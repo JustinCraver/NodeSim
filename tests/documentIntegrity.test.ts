@@ -209,6 +209,27 @@ describe('versioned GraphDocument migration and serialization', () => {
 });
 
 describe('autosave and recovery storage', () => {
+  it('reads the legacy EconGraph current record while new saves use NodeSim keys', () => {
+    const storage = new MemoryStorage();
+    const repository = new GraphDocumentStorage(storage);
+    const document = migrateGraphDocument(legacyDemo);
+    repository.save(document);
+    const current = storage.getItem(DOCUMENT_STORAGE_KEYS.current);
+    if (!current) {
+      throw new Error('Expected a current NodeSim envelope');
+    }
+
+    storage.setItem('econgraph.document.v1.current', current);
+    storage.removeItem(DOCUMENT_STORAGE_KEYS.current);
+    storage.removeItem(DOCUMENT_STORAGE_KEYS.lastGood);
+
+    expect(repository.load(legacyDemo)).toMatchObject({
+      document,
+      source: 'current',
+      recovered: false,
+    });
+  });
+
   it('restores authored edits and falls back to the previous last-good revision', () => {
     const storage = new MemoryStorage();
     const repository = new GraphDocumentStorage(storage);

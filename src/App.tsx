@@ -49,13 +49,13 @@ import { Toolbar } from './ui/Toolbar';
 import { WorkspacePanel } from './ui/WorkspacePanel';
 import demoGraph from './demo/houseFund.json';
 import 'react-grid-layout/css/styles.css';
-import 'react-resizable/css/styles.css';
 import './styles.css';
 
 const DEFAULT_NODE_SCALE = 2;
 const COMPACT_WORKSPACE_QUERY = '(max-width: 1100px)';
 const AUTOSAVE_DEBOUNCE_MS = 250;
-const WORKSPACE_STORAGE_KEY = 'econgraph.workspace.v1';
+const WORKSPACE_STORAGE_KEY = 'nodesim.workspace.v1';
+const LEGACY_WORKSPACE_STORAGE_KEY = 'econgraph.workspace.v1';
 const WORKSPACE_GRID_COLS = 12;
 const WORKSPACE_MIN_ROWS = 30;
 const WORKSPACE_ROW_HEIGHT = 36;
@@ -348,7 +348,8 @@ const loadWorkspaceState = (): WorkspaceState => {
   if (typeof window === 'undefined') {
     return getDefaultWorkspaceState();
   }
-  const stored = window.localStorage.getItem(WORKSPACE_STORAGE_KEY);
+  const stored = window.localStorage.getItem(WORKSPACE_STORAGE_KEY)
+    ?? window.localStorage.getItem(LEGACY_WORKSPACE_STORAGE_KEY);
   if (!stored) {
     return getDefaultWorkspaceState();
   }
@@ -1135,7 +1136,7 @@ export const App = () => {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>EconGraph authoring</h1>
+        <h1>NodeSim authoring</h1>
         <span>Build and inspect a typed simulation graph.</span>
       </header>
       {isCompactWorkspace ? (

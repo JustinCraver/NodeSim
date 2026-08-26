@@ -6,6 +6,7 @@ dist/
 *.tsbuildinfo
 .vite/
 coverage/
+artifacts/releases/
 
 # Local environment and logs
 .env

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "product": "NodeSim",
+  "expectedTitle": "EconGraph",
+  "basePath": "/NodeSim/",
+  "site": "artifacts/releases/nodesim-v0.0.0/site",
+  "exactPathStatus": 200,
+  "outsideBaseStatus": 404,
+  "assetCount": 2,
+  "requests": [
+    {
+      "path": "/NodeSim/assets/index-3bf329d9.css",
+      "status": 200
+    },
+    {
+      "path": "/NodeSim/assets/index-8b29424a.js",
+      "status": 200
+    },
+    {
+      "path": "/NodeSim/",
+      "status": 200
+    }
+  ],
+  "securityHeaders": {
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+    "Referrer-Policy": "no-referrer",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  }
+}
