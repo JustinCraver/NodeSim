@@ -1,9 +1,10 @@
+import { execFileSync } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import ts from 'typescript';
 
 const root = process.cwd();
-const roots = ['src', 'tests'];
+const roots = ['src', 'tests', 'scripts'];
 const extensions = new Set(['.ts', '.tsx', '.mjs']);
 const failures = [];
 
@@ -33,7 +34,13 @@ for (const directory of roots) {
       if (/@ts-(?:ignore|nocheck)/u.test(line)) failures.push(`${relative}:${index + 1}: suppressed TypeScript check`);
     });
 
-    if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+    if (file.endsWith('.mjs')) {
+      try {
+        execFileSync(process.execPath, ['--check', file], { encoding: 'utf8', stdio: 'pipe' });
+      } catch (error) {
+        failures.push(`${relative}: ${error.stderr?.toString().trim() || error.message}`);
+      }
+    } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
       const source = ts.createSourceFile(
         file,
         text,

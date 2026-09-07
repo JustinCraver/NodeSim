@@ -8,20 +8,31 @@
 
 ## Context
 
-NodeSim currently has an unversioned `GraphData` document, permissive optional
-fields, scalar edge transport, a fixed 120-month asset simulation, and a small
-formula evaluator. Characterization tests protect valid behavior that exists
-today. They also expose legacy behavior that must remain readable during a
-future migration but is not necessarily approved as the final product contract.
+At this ADR's drafting on 2026-08-12, NodeSim had an unversioned `GraphData`
+document, permissive optional fields, scalar edge transport, a fixed 120-month
+asset simulation, and a small formula evaluator. Characterization tests protected
+valid behavior from that time. They also exposed legacy behavior that needed
+to remain readable during migration but was not necessarily approved as the
+final product contract.
 
-The audit confirmed materially incorrect formula results, non-finite values,
+The original audit confirmed materially incorrect formula results, non-finite values,
 ignored edge metadata, over-broad cycle errors, and missing persistence and
-root-document export guarantees. Those defects are pending test targets, not
-accepted behavior.
+root-document export guarantees. Those defects were remediation targets, not
+accepted behavior. The historical baseline below is preserved for migration context.
 
 Normative terms such as **MUST**, **MUST NOT**, and **SHOULD** below describe the
 approved target contract. The approval record below resolves every product
 decision that previously blocked Stage 2.
+
+### Implementation note (2026-09-07; decision unchanged)
+
+Versioned documents, migration, root export, strict formulas, typed simulation,
+scoped graphs, autosave, and command history are now implemented. Regression
+tests replace the original non-running defect targets. Recovery and authoring
+gaps remain; decimal/fixed-point money has not been implemented. See the
+[current product guide](../PRODUCT_GUIDE.md) and [review](../PROJECT_REVIEW.md).
+Normative requirements below remain authoritative even where implementation
+is incomplete. This note does not grant release or manual acceptance.
 
 ## Approved decision
 
@@ -70,8 +81,9 @@ transforms, simulation samples, and outputs MUST be finite numbers.
   nodes MUST be marked blocked; they MUST NOT silently substitute zero.
 - Serialization MUST reject non-finite values and MUST NOT rely on JSON's
   conversion of them to `null`.
-- Equality and threshold comparisons use the stored numeric value. A separate
-  product decision is still required for decimal/currency precision.
+- Equality and threshold comparisons use the stored numeric value. The approved
+  precision decision below requires decimal/fixed-point money; representation
+  and rounding rules still need an implementation design before financial use.
 
 ### 3. Expense sign convention
 
@@ -81,7 +93,7 @@ negate it. Subtraction is explicit in a subtract node or formula.
 - Negative authored expenses are invalid.
 - Refunds or reimbursements are modeled as income unless a future signed-flow
   type is explicitly approved.
-- Edge weights are non-negative under the proposed policy, so sign changes
+- Edge weights are non-negative under the approved policy, so sign changes
   remain visible in graph operations rather than hidden in connections.
 
 This preserves the house-fund model's `4000 - 2500 = 1500` behavior and avoids
@@ -111,8 +123,9 @@ Rules:
   node or function.
 - Text nodes produce `none`.
 
-The current TypeScript optional-field bag does not enforce these rules; schema
-and engine changes belong to later stages.
+At drafting, the TypeScript optional-field bag did not enforce these rules.
+The current implementation separates authored discriminated types from the
+legacy/runtime shape; see the implementation note above.
 
 ### 5. Edge weight and lag
 
@@ -129,8 +142,8 @@ Every computational edge has these target semantics:
 - Port validation occurs before either transform.
 - Unsupported or invalid metadata is an error; it MUST NOT be ignored.
 
-The existing engine silently ignores both fields. That behavior is a confirmed
-defect and is not protected as an intended result.
+The original engine silently ignored both fields. That historical defect is
+not protected as an intended result; current engine regressions cover both.
 
 ### 6. Asset semantics
 
@@ -152,7 +165,8 @@ An asset consumes zero or more monthly flows and has the following contract:
 - Month zero is the initial balance and is not included in the emitted series.
 - The emitted balance series has exactly `simulationHorizonMonths` samples,
   indexed internally from zero and presented to users as months 1 through N.
-- The document owns `simulationHorizonMonths`; the proposed default is `120`.
+- The document owns `simulationHorizonMonths`; the approved default is `120`.
+  The v1 schema stores it as `settings.simulation.horizonMonths`.
 - Asset outputs are explicitly named:
   - `balance`: `timeseries`;
   - `endingBalance`: `scalar`.
@@ -211,11 +225,11 @@ formula references.
 - Renaming a label, moving a node, or changing a panel MUST NOT change identity.
 - Duplicate IDs, orphaned endpoints, invalid bindings, and recursive scope
   ambiguity are document-validation errors.
-- A maximum nesting depth must be chosen before nested editing ships.
+- The approved maximum nesting depth is 8, with root at depth 0.
 
 ### 10. Persistence, import/export, and recovery guarantees
 
-The future authoritative artifact is a versioned root `GraphDocument` containing
+The authoritative artifact is a versioned root `GraphDocument` containing
 only authored state and explicit document settings.
 
 - Computed values, timeseries caches, transient input flags, selection, hover,
@@ -238,10 +252,10 @@ only authored state and explicit document settings.
 - Import/export ordering and formatting SHOULD be deterministic to support
   reviewable diffs, but semantic equality does not depend on object-key order.
 
-Implementation of these guarantees is Stage 2 work and is deliberately absent
-from this stage.
+Implementation of these guarantees belongs to Stage 2 and subsequent remediation;
+the decision itself is not evidence that every persistence failure mode is covered.
 
-## Current behavior to preserve
+## Legacy compatibility baseline (2026-08-12)
 
 The passing characterization suite protects these behaviors until an approved
 migration says otherwise:
@@ -260,12 +274,14 @@ migration says otherwise:
 | House-fund fixture | net income 4000, expenses 2500, savings 1500, adjusted savings 1350, target month 43 |
 | Legacy JSON | current unversioned `GraphData` and nested custom fields remain readable during migration |
 
-## Confirmed defects and pending target coverage
+## Historical defects and original target coverage
 
-These are not intended behavior. Each has a non-running `todo` test so the target
-remains visible without leaving the suite red.
+These were not intended behavior. At drafting they had non-running `todo` tests;
+the current suite has executable regressions in `tests/formulaAndComputation.test.ts`,
+`tests/typedSimulation.test.ts`, `tests/documentIntegrity.test.ts`, and the
+characterization/nested suites. The table preserves the original defect context.
 
-| Confirmed current behavior | Target |
+| Behavior confirmed at drafting | Target |
 | --- | --- |
 | `1$+2` evaluates as `3` because unknown text is skipped | Reject the unknown character and the whole expression |
 | `.5 + .25` evaluates as `30` | Evaluate as `0.75` under the proposed grammar, or explicitly reject if the grammar decision changes |

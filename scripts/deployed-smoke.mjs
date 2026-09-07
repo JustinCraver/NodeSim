@@ -3,8 +3,14 @@ import { readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const args = new Map();
+const supportedOptions = new Set(['--site', '--base', '--title', '--output']);
 for (let index = 2; index < process.argv.length; index += 1) {
-  if (process.argv[index].startsWith('--')) args.set(process.argv[index].slice(2), process.argv[index + 1]), index += 1;
+  const option = process.argv[index];
+  if (!supportedOptions.has(option)) throw new Error(`Unknown option: ${option}. This command tests a local artifact only.`);
+  const value = process.argv[index + 1];
+  if (!value || value.startsWith('--')) throw new Error(`Missing value for ${option}`);
+  args.set(option.slice(2), value);
+  index += 1;
 }
 const root = process.cwd();
 const site = path.resolve(root, args.get('site') ?? 'dist');
@@ -86,9 +92,21 @@ try {
   const indexResponse = await fetch(`${origin}${basePath}`);
   const index = await indexResponse.text();
   if (!index.includes(`<title>${expectedTitle}</title>`)) throw new Error(`Expected ${expectedTitle} title was not present.`);
-  const references = [...index.matchAll(/(?:src|href)="([^"]+)"/gu)].map((match) => match[1]);
-  const invalidReferences = references.filter((reference) => !reference.startsWith(basePath));
+  const references = [...new Set(
+    [...index.matchAll(/\b(?:src|href)\s*=\s*(["'])(.*?)\1/gu)].map((match) => match[2]),
+  )];
+  const invalidReferences = references.filter((reference) => {
+    const resolved = new URL(reference, `${origin}${basePath}`);
+    return !reference.startsWith(basePath) || resolved.origin !== origin || !resolved.pathname.startsWith(basePath);
+  });
   if (invalidReferences.length > 0) throw new Error(`Assets escaped ${basePath}: ${invalidReferences.join(', ')}`);
+  // Enumerating files alone cannot detect a stale or missing entrypoint reference.
+  for (const reference of references) {
+    const url = new URL(reference, origin);
+    const response = await fetch(url);
+    await response.arrayBuffer();
+    if (response.status !== 200) throw new Error(`${url} returned ${response.status}`);
+  }
   const rootResponse = await fetch(`${origin}/`);
   if (basePath !== '/' && rootResponse.status !== 404) throw new Error('Root unexpectedly served the project-path artifact.');
 
@@ -101,11 +119,15 @@ try {
     exactPathStatus: indexResponse.status,
     outsideBaseStatus: rootResponse.status,
     assetCount: files.length - 1,
+    entrypointReferences: references,
     requests,
     securityHeaders: headers,
   };
   if (output) await writeFile(path.resolve(root, output), `${JSON.stringify(evidence, null, 2)}\n`);
   console.log(`Deployed-path smoke passed: ${basePath} and ${files.length - 1} assets returned 200 with the required headers.`);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
 } finally {
   await new Promise((resolve) => server.close(resolve));
 }

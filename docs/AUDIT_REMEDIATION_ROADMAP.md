@@ -1,8 +1,31 @@
 # NodeSim Audit Remediation Roadmap
 
-**Status:** Proposed  
+**Status:** Proposed remediation program; individual stage work has since landed
+
 **Audit date:** 2026-07-27  
 **Current release assessment:** Prototype/demo GO; production and financial-decision use NO-GO
+
+## Implementation status refreshed 2026-09-07
+
+This document retains the original audit, stage boundaries, and kickoff prompts.
+It is not a list of wholly unimplemented features. The semantic ADR was approved
+on 2026-08-23; source at `4215933` includes substantial Stage 0-8 work.
+Implementation is not blanket acceptance of every stage gate.
+
+| Stages | Current evidence and remaining boundary |
+| --- | --- |
+| 0-1 | Ignored generated files, pinned toolchain, strict TypeScript, tests, approved ADR. Clean install was previously recorded; not repeated in the September review. |
+| 2 | Validated v1 documents, legacy migration, atomic candidate replacement, root export, autosave and recovery exist. Recovery fault handling remains incomplete. |
+| 3-4 | Strict formula parsing, finite/type diagnostics, localized cycles, edge weight/lag, configurable horizon, asset/output semantics have passing regressions. Decimal/fixed-point money is still required before financial-decision use. |
+| 5-6 | Scoped nested editing, explicit binding diagnosis/repair, document commands, bounded undo/redo, lifecycle helper, and benchmarks exist. Custom-port creation and nested result presentation have confirmed workflow gaps. |
+| 7 | Toolbar/semantic tree, keyboard controls, compact tabs at 1100 px, and dated rendered evidence exist. Manual accessibility gates and repeatable browser regression coverage remain open. |
+| 8 | Existing CI/dependency workflows, local checks, budgets, smoke, packaging, and release docs exist. Hosted CI, current advisory review, real-origin headers/deployment, and production rollback were not verified by this review. |
+
+See [PROJECT_REVIEW.md](PROJECT_REVIEW.md) for current findings, verification,
+and proposed priorities, and [PRODUCT_GUIDE.md](PRODUCT_GUIDE.md) for current
+behavior. New review recommendations do not amend the approved ADR or activate
+a roadmap stage. Historical [Stage 8 NO-GO](../artifacts/stage-8/GO-NO-GO.md)
+remains a dated receipt rather than a live statement of Git or deployment state.
 
 ## Purpose
 
@@ -18,7 +41,10 @@ Each stage is deliberately bounded and includes:
 
 Passing one stage does not authorize beginning the next stage. Manual, product-decision, security, deployment, and rendered-UX gates remain pending until their required evidence exists.
 
-## Audit Summary
+## Historical Audit Summary (2026-07-27)
+
+The following observations describe the original audit checkout. Many were
+subsequently repaired; use the status table above for the present implementation.
 
 NodeSim is a promising visual financial-modeling prototype. Its current happy-path demo computes consistently, strict TypeScript is enabled, the production build succeeds, and the formula implementation does not execute arbitrary JavaScript.
 
@@ -37,11 +63,11 @@ It is not production-ready because:
 11. there are no automated tests, linting, CI, deployment, or release gates;
 12. dependency vulnerability status has not been verified against a current live advisory service.
 
-### Confirmed Correctness Defects
+### Correctness Defects Confirmed at the Original Audit
 
 Targeted engine probes reproduced the following:
 
-| Input or condition | Current result | Required result |
+| Input or condition | Result at original audit | Required result |
 | --- | --- | --- |
 | `1$+2` | `3`, without an error | Reject the unknown character |
 | `.5 + .25` | `30` | `0.75`, or a grammar error if leading decimals are intentionally unsupported |
@@ -51,7 +77,7 @@ Targeted engine probes reproduced the following:
 | Weighted edge | Weight ignored | Implement the documented behavior or remove the unsupported field |
 | Formula edit followed by reload | Edit lost | Recover the last valid authored document |
 
-### Verified Baseline
+### Historical Verified Baseline
 
 - TypeScript check passed.
 - Production build passed with 73 modules transformed.
