@@ -5,6 +5,10 @@ changes described below. **Recommendations are proposed, not approved roadmap
 commitments.** The [approved ADR](adr/0001-product-semantics.md) remains the
 semantic authority; the [roadmap](AUDIT_REMEDIATION_ROADMAP.md) retains stage gates.
 
+Follow-up 2026-09-25: R1 recovery remediation is complete, with its own receipt
+under R1 below. The original review verification table remains dated evidence.
+R2 is now the first unfinished recommendation.
+
 ## Assessment and scope
 
 This is a useful browser prototype with substantial working foundations:
@@ -74,18 +78,17 @@ Existing release artifacts were not repackaged or overwritten.
 
 ## Best next three actions
 
-1. **R1: harden recovery**, because user-authored work is the highest-impact
-   boundary. Begin with fault-injection tests and current/temporary revision
-   selection; address unavailable storage and pending edits without silently
-   replacing recoverable data. Decide how competing tabs should be handled before
-   implementing cross-tab writes.
-2. **R2: complete custom-port transactions**, because a visible core authoring
+R1 was implemented in the 2026-09-25 recovery pass below. The next unfinished
+recommendations are:
+
+1. **R2: complete custom-port transactions**, because a visible core authoring
    command currently cannot succeed. Start with selecting an existing compatible
    binding and committing the complete port in one command; no schema relaxation
    or automatic node creation is needed.
-3. **R3: make nested inspection trustworthy**, so visible results and diagnostics
+2. **R3: make nested inspection trustworthy**, so visible results and diagnostics
    agree with the root instance. Confirm whether nested views should display live
    instance results or an explicitly labeled isolated preview before implementing.
+3. **R4: make release packaging immutable**, before creating another candidate.
 
 If packaging is the next task, do **R4 before creating another candidate**.
 Decimal representation/rounding and deployment hosting also need decisions before
@@ -100,23 +103,40 @@ useful follow-up. Each item states the evidence boundary.
 
 ### R1 Recovery and storage failures
 
-**P1 · 2–4 days · source-confirmed gaps; happy-path recovery passes.**
-`GraphDocumentStorage.load()` in `src/document/documentStorage.ts` returns a
-valid current record before considering a newer valid temporary envelope.
-Namespace fallback uses `??` before validation, so an invalid NodeSim record can
-hide a valid legacy record at that tier. `App.tsx` reads document/workspace/theme
-storage without catching access errors, writes workspace/theme outside the
-autosave catch, and has no page-exit flush or storage-conflict listener.
+**Completed 2026-09-25: recovery/storage engineering scope.** Original gaps were
+current-before-temporary selection, namespace fallback before validation,
+unguarded browser storage access, and missing pending-edit/tab conflict handling.
 
-This can lose the latest interrupted edit, prevent startup, or let tabs overwrite
-each other's work. Start with fault-injected envelopes and write failures, then
-choose the newest valid candidate within a defined namespace/revision policy,
-surface degraded storage clearly, and preserve dirty state when save fails.
-Address cross-tab ownership explicitly; do not auto-overwrite recovered bytes.
-**Success:** newest recoverable work survives each interrupted write stage;
-blocked/quota storage leaves an editable/exportable UI with a truthful warning;
-pending edits and competing tabs have tested, documented behavior. Browser fault
-injection and a cross-tab UX decision are required beyond the current unit tests.
+- Recovery validates every tier, chooses the highest valid revision within
+  NodeSim, then falls back to independently validated EconGraph records. Ties
+  prefer current, temporary, last-known-good. Loading never rewrites records.
+- Saves preserve and verify the latest recoverable envelope before reusing
+  temporary, then verify exact write readbacks. Failed writes remain dirty;
+  unreadable/unrecoverable records cannot be replaced by fallback-demo autosave.
+- Storage getter/read/quota failures leave editing, root JSON downloads, theme,
+  and workspace controls usable with a persistent warning and explicit retry.
+- Cross-tab policy: serialize writes with Web Locks, compare the loaded records,
+  and pause autosave on external changes. Local edits remain editable/exportable.
+  Explicit **Load saved version** resumes from saved data and retains local work
+  in Undo. No automatic merge or force overwrite is offered; browsers without
+  Web Locks use export instead of shared document writes.
+- Pending accepted edits flush on hidden visibility/pagehide/beforeunload.
+  Unsaved authored changes and uncommitted numeric drafts trigger unload
+  protection. Listener/timer cleanup prevents callbacks and queued writes after
+  teardown. Numeric-draft validation behavior in R9 is unchanged.
+
+Verification and rendered evidence are retained in the
+[R1 receipt](../artifacts/r1-recovery-2026-09-25/README.md), with a reproducible
+[browser command](RELEASE_OPERATIONS.md#recovery-browser-verification).
+Fault regressions reproduced seven original failures before the fix. Tests cover
+interrupted write stages, corrupt readbacks, namespace/revision selection,
+blocked reads, quota/retry, competing writers, pending edits, and cleanup.
+
+This closes the bounded R1 implementation task, not production or manual
+accessibility acceptance. Browser unload prompts/final asynchronous writes are
+best effort; a forced crash before the debounce completes can lose in-memory
+changes. Coordination covers tabs using the current lock protocol, not older
+app versions or external writers. Export remains the portable durability path.
 
 ### R2 Custom-port authoring
 
@@ -224,8 +244,9 @@ has an explicit result/exception policy. No live advisory status was established
 **P2; manual acceptance remains a release gate · 1–3 days plus human checks · coverage gap.**
 `vitest.config.ts` runs Node tests; `controllerLifecycle.test.ts` uses `FakeGraph`.
 `scripts/coverage.mjs` includes core `.ts`, excludes `.tsx`, and does not require
-the real controller. Stage 7 contains JSON/screenshots but no checked-in browser
-runner. Thus passing CI does not cover the port and nested-view defects above.
+the real controller. Stage 7 contains JSON/screenshots. The later R1 pass adds a
+focused optional recovery browser runner, but passing CI still does not cover
+the port and nested-view defects above or the complete authoring matrix.
 
 Retain a small reproducible browser regression path for add/connect, fields,
 scope changes, file import/export, history, reload, and desktop/compact remount.

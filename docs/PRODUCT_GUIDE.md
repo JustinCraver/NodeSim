@@ -134,17 +134,45 @@ financial-decision use.
 ## Autosave, recovery, and accessibility
 
 Every valid authored transaction schedules autosave after 250 ms. Saving writes
-and validates a temporary envelope, retains the previous current envelope as
-last-known-good, replaces current, validates readback, then removes temporary.
-Load order is current, interrupted temporary, last-known-good, then demo.
-Recovery status is announced; legacy `econgraph.document.v1.*` records remain
-readable while new saves use `nodesim.document.v1.*`.
+only authored root data. Recovery validates all current, temporary, and
+last-known-good envelopes independently and chooses the highest valid revision
+within the NodeSim namespace. Equal revisions prefer current, then temporary,
+then last-known-good. If no NodeSim candidate is valid, the same policy is applied
+to legacy `econgraph.document.v1.*` records. Namespace revisions are independent;
+a high legacy revision cannot displace valid NodeSim data.
 
-These are the implemented steps, not a complete crash-recovery guarantee. A valid
-current record wins even if the temporary record has a newer revision. There is
-no page-exit flush or cross-tab conflict handling, and unavailable storage can
-currently prevent startup. Export important work with **Save**. Recovery hardening
-is tracked in [R1](PROJECT_REVIEW.md#r1-recovery-and-storage-failures).
+Loading never writes recovered data automatically. On the next accepted edit,
+the newest valid candidate is retained and read back as last-known-good **before**
+reusing temporary. Autosave then writes and reads back temporary and current,
+and removes temporary only after success. Failed writes leave the document dirty.
+**Retry autosave** retries the latest local document after a storage failure.
+
+Blocked storage still opens an editable, exportable UI with a persistent warning.
+If some storage records cannot be read, or bytes exist but none are valid,
+autosave pauses to protect those records. **Load saved version** retries recovery;
+it replaces the local document only after a complete safe read. If records remain
+unreadable or invalid, local work stays open. Original malformed records are not
+automatically deleted or replaced with the demo. Layout and theme failures are
+reported separately and do not prevent authoring.
+
+Competing tabs use browser Web Locks to serialize document writes and compare
+the complete set of loaded records before saving. When another tab changes or
+clears document storage, autosave pauses in this tab, including when it had no
+local edits. Continue editing and use **Export this document**, or explicitly
+**Load saved version (local edits remain in Undo)** to resume from saved data.
+Loading is undoable; Undo restores the prior local document as a new edit.
+There is no automatic merge or force-overwrite action. Browsers without Web Locks
+remain editable/exportable but cannot autosave safely. Older app versions and
+external writers that do not use this lock are outside the coordination protocol.
+
+Accepted pending edits request an immediate flush on page hide, hidden visibility,
+and before unload. Unload protection applies while authored changes remain
+unsaved or a numeric draft differs from its committed value. Numeric fields commit
+on Enter or blur; drafts are not document data and are not exported or autosaved.
+Browser unload prompts and asynchronous final writes are best effort: a crash or
+forced process termination before the 250 ms save can still lose in-memory work.
+Export important work with **Save**. The R1 tests and rendered receipt are linked
+from the [review](PROJECT_REVIEW.md#r1-recovery-and-storage-failures).
 
 The toolbar and semantic tree provide a non-canvas authoring path. Menus manage
 focus, errors are exposed in the Inspector and restrained live regions, and the
@@ -183,8 +211,10 @@ the persistence contract. Invalid formulas may be authored and saved as text;
 the engine diagnoses them without emitting a numeric result.
 
 [`App.tsx`](../src/App.tsx) subscribes to document revisions, projects the active
-scope into [`createCytoscape.ts`](../src/graph/createCytoscape.ts), and debounces
-storage writes. The adapter emits commands for pointer edits and owns rendering
+scope into [`createCytoscape.ts`](../src/graph/createCytoscape.ts).
+[`AutosaveSession`](../src/document/autosaveSession.ts) independently subscribes
+to accepted store revisions, retains pending data, debounces writes, and manages
+conflict/retry state. The adapter emits commands for pointer edits and owns rendering
 resources through `ControllerLifecycle`; it is not the document authority.
 `graphScope.ts` addresses nested graphs with immutable arrays of custom-node IDs.
 
@@ -193,5 +223,6 @@ simulation settings, applies edge transforms, injects custom inputs during root
 evaluation, and returns derived values plus scoped diagnostics. `formula.ts`
 parses without evaluating JavaScript. `connectionValidation.ts` checks candidate
 connections. [`tests/`](../tests) exercises these core seams; its lifecycle tests
-use a fake graph, and the retained Stage 7 browser reports have no rerunnable
-browser test command in this checkout.
+use a fake graph. A focused R1 browser fault-injection command is documented in
+the [runbook](RELEASE_OPERATIONS.md#recovery-browser-verification); it does not
+replace the broader Stage 7 authoring/accessibility acceptance matrix.

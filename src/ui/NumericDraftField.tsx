@@ -99,6 +99,7 @@ export const NumericDraftField = ({
         aria-invalid={error ? 'true' : undefined}
         aria-describedby={error ? errorId : undefined}
         data-numeric-draft="true"
+        data-uncommitted={draft !== String(value) ? 'true' : undefined}
         onFocus={() => setIsEditing(true)}
         onChange={(event) => {
           setDraft(event.target.value);

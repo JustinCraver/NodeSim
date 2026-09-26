@@ -15,7 +15,7 @@ Implementation is not blanket acceptance of every stage gate.
 | Stages | Current evidence and remaining boundary |
 | --- | --- |
 | 0-1 | Ignored generated files, pinned toolchain, strict TypeScript, tests, approved ADR. Clean install was previously recorded; not repeated in the September review. |
-| 2 | Validated v1 documents, legacy migration, atomic candidate replacement, root export, autosave and recovery exist. Recovery fault handling remains incomplete. |
+| 2 | Validated v1 documents, legacy migration, atomic candidate replacement, root export, autosave and recovery exist. R1 recovery remediation is recorded in the current review; browser exit/crash durability remains bounded by documented browser behavior. |
 | 3-4 | Strict formula parsing, finite/type diagnostics, localized cycles, edge weight/lag, configurable horizon, asset/output semantics have passing regressions. Decimal/fixed-point money is still required before financial-decision use. |
 | 5-6 | Scoped nested editing, explicit binding diagnosis/repair, document commands, bounded undo/redo, lifecycle helper, and benchmarks exist. Custom-port creation and nested result presentation have confirmed workflow gaps. |
 | 7 | Toolbar/semantic tree, keyboard controls, compact tabs at 1100 px, and dated rendered evidence exist. Manual accessibility gates and repeatable browser regression coverage remain open. |

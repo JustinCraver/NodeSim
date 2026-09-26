@@ -1,0 +1,18 @@
+{
+  "result": "PASS",
+  "recordedAt": "2026-09-26T02:35:38.251Z",
+  "url": "http://127.0.0.1:5197/NodeSim/",
+  "browser": "151.0.7922.34",
+  "checks": [
+    "Normal save and reload restore the authored document",
+    "Newer interrupted temporary work wins; startup does not rewrite either envelope",
+    "Invalid NodeSim bytes do not hide valid legacy work or get overwritten at startup",
+    "Denied localStorage getter leaves desktop editable and exportable, theme usable, saved bytes unchanged",
+    "Quota failure keeps dirty/export state; compact warning has no overflow and Retry saves after storage recovers",
+    "Real tabs detect external saves, preserve local export, load explicitly by keyboard, and restore local edits through Undo",
+    "Uncommitted numeric drafts trigger unload protection; pagehide flush persists accepted pending edits",
+    "Browsers without Web Locks remain editable/exportable without unsafe shared writes",
+    "No browser page errors or console errors in tested workflows"
+  ],
+  "errors": []
+}

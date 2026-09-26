@@ -33,7 +33,8 @@ explicit authorization.
   explicit repair; `controllerLifecycle.ts`: owned-resource cleanup.
 - `src/ui/`: toolbar, semantic hierarchy, Inspector, numeric drafts, and panels.
 - `tests/`: core regressions, nested/semantic fixtures, benchmarks, and CLI smoke tests.
-  `scripts/`: local verification and packaging. There is no checked-in browser E2E runner.
+  `scripts/`: local verification and packaging, including the optional focused
+  R1 recovery browser runner documented in the release runbook.
 
 The document store is the authored-state authority; never save Cytoscape data or
 computed caches directly. Preserve `econgraph.*` reads and the existing `Econ*`

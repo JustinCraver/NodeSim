@@ -3,6 +3,7 @@ import { MAX_HORIZON_MONTHS, MAX_IMPORT_BYTES } from '../document/graphDocument'
 import type { GraphBreadcrumb } from '../graph/graphScope';
 import type { EconNodeData, GraphDocument, NodeKind } from '../models/types';
 import { NumericDraftField } from './NumericDraftField';
+import { downloadDocument } from './downloadDocument';
 
 const NODE_OPTIONS: Array<{ kind: NodeKind; label: string; group: string }> = [
   { kind: 'value', label: 'Value', group: 'Basic math' },
@@ -101,14 +102,7 @@ export const Toolbar = ({
   }, [documentStatus]);
 
   const handleSave = () => {
-    const data = onSave();
-    const blob = new Blob([`${JSON.stringify(data, null, 2)}\n`], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'nodesim-v1.json';
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadDocument(onSave());
     setActionStatus('Project save started. Check browser downloads.');
   };
 

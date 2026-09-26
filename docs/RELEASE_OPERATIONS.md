@@ -58,6 +58,30 @@ The release manifest binds product, version, base path, source revision, dirty
 state, file sizes, and SHA-256 hashes. A production release requires
 `sourceDirty: false`; a dirty local artifact is validation evidence only.
 
+## Recovery browser verification
+
+R1 has an optional focused browser check in
+`scripts/recovery-browser-check.mjs`. It uses a separately available Playwright
+runtime and browser; it does not add a dependency or install either. Run Vite on
+a dedicated loopback port, then run the check from another terminal:
+
+```powershell
+npm.cmd run dev -- --port 5197 --strictPort
+# In another terminal; omit this variable if Playwright is already resolvable:
+$env:PLAYWRIGHT_MODULE_PATH = '<absolute path to the available playwright package>'
+node scripts/recovery-browser-check.mjs http://127.0.0.1:5197/NodeSim/ artifacts/recovery-browser
+```
+
+The runner uses fresh browser contexts, leaving normal browser documents alone.
+It injects newer temporary/invalid namespace records, blocked storage access,
+quota failures, and missing Web Locks. It checks export downloads, recovery,
+retry, real tab conflicts, explicit reload/Undo, pending-edit lifecycle handlers,
+and desktop/390 px compact presentation. Screenshots and `receipt.json` go to the
+chosen directory. Use a fresh output directory for evidence you intend to retain.
+This command is focused local R1 evidence; it is not part of hosted CI, does not
+prove forced-process crash durability, and does not close manual accessibility
+or the broader browser matrix in R8. Core fault tests remain in `ci:verify`.
+
 ## Security and dependency review
 
 Every response under `/NodeSim/` must carry the exact values in

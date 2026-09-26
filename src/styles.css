@@ -71,6 +71,30 @@
   background-color: var(--bg);
 }
 
+.storage-notice {
+  margin: 8px 16px;
+  padding: 12px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: var(--danger-surface);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.storage-notice p { margin: 0 0 8px; }
+.storage-notice-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.storage-notice-actions button {
+  white-space: normal;
+  max-width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--button-secondary-border);
+  border-radius: 6px;
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+  cursor: pointer;
+}
+.storage-notice-actions button:hover { background: var(--button-secondary-hover); }
+
 :root[data-theme='dark'] {
   color-scheme: dark;
   --bg: #0b1220;

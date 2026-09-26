@@ -11,13 +11,13 @@ import type {
   EconEdgeData,
   EconNodeData,
   GraphData,
-  GraphDocument,
   NodeKind,
   SimulationSettingsV1,
 } from './models/types';
 import { createCytoscape } from './graph/createCytoscape';
 import { validateConnection } from './engine/connectionValidation';
-import { GraphDocumentStorage } from './document/documentStorage';
+import { GraphDocumentStorage, isDocumentStorageKey, type DocumentLoadResult } from './document/documentStorage';
+import { AutosaveSession, browserExclusiveWrite, type AutosaveState } from './document/autosaveSession';
 import {
   GraphDocumentStore,
   type DocumentCommand,
@@ -27,7 +27,6 @@ import {
 import {
   graphDocumentToRuntimeGraph,
   MAX_HORIZON_MONTHS,
-  migrateGraphDocument,
   parseGraphDocumentText,
 } from './document/graphDocument';
 import {
@@ -47,13 +46,13 @@ import { HierarchyPanel } from './ui/HierarchyPanel';
 import { InspectorPanel } from './ui/InspectorPanel';
 import { Toolbar } from './ui/Toolbar';
 import { WorkspacePanel } from './ui/WorkspacePanel';
+import { downloadDocument } from './ui/downloadDocument';
 import demoGraph from './demo/houseFund.json';
 import 'react-grid-layout/css/styles.css';
 import './styles.css';
 
 const DEFAULT_NODE_SCALE = 2;
 const COMPACT_WORKSPACE_QUERY = '(max-width: 1100px)';
-const AUTOSAVE_DEBOUNCE_MS = 250;
 const WORKSPACE_STORAGE_KEY = 'nodesim.workspace.v1';
 const LEGACY_WORKSPACE_STORAGE_KEY = 'econgraph.workspace.v1';
 const WORKSPACE_GRID_COLS = 12;
@@ -108,8 +107,8 @@ type WorkspaceState = {
   panels: PanelInstance[];
   layout: LayoutItem[];
 };
-type InitialDocumentState = {
-  document: GraphDocument;
+type InitialDocumentState = DocumentLoadResult & {
+  storage: GraphDocumentStorage;
   status: string;
 };
 
@@ -133,12 +132,13 @@ const getConnectionCandidates = (source: EconNodeData, target: EconNodeData): Co
 };
 
 const loadInitialDocument = (): InitialDocumentState => {
-  if (typeof window === 'undefined') {
-    return { document: migrateGraphDocument(demoGraph), status: 'Demo loaded' };
-  }
-  const loaded = new GraphDocumentStorage(window.localStorage).load(demoGraph as GraphData);
+  // Access the getter inside the repository's guarded reads, including when
+  // privacy settings throw before getItem can even be called.
+  const storage = new GraphDocumentStorage(() => window.localStorage);
+  const loaded = storage.load(demoGraph as GraphData);
   return {
-    document: loaded.document,
+    ...loaded,
+    storage,
     status: loaded.warning ?? (loaded.source === 'fallback' ? 'Demo loaded' : 'Saved document restored'),
   };
 };
@@ -344,34 +344,30 @@ const repairWorkspaceState = (state: Partial<WorkspaceState>): WorkspaceState =>
   return { panels, layout: repairedLayout };
 };
 
-const loadWorkspaceState = (): WorkspaceState => {
+const loadWorkspaceState = (): { value: WorkspaceState; warning?: string } => {
   if (typeof window === 'undefined') {
-    return getDefaultWorkspaceState();
-  }
-  const stored = window.localStorage.getItem(WORKSPACE_STORAGE_KEY)
-    ?? window.localStorage.getItem(LEGACY_WORKSPACE_STORAGE_KEY);
-  if (!stored) {
-    return getDefaultWorkspaceState();
+    return { value: getDefaultWorkspaceState() };
   }
   try {
-    return repairWorkspaceState(JSON.parse(stored) as Partial<WorkspaceState>);
+    const stored = window.localStorage.getItem(WORKSPACE_STORAGE_KEY)
+      ?? window.localStorage.getItem(LEGACY_WORKSPACE_STORAGE_KEY);
+    return { value: stored ? repairWorkspaceState(JSON.parse(stored) as Partial<WorkspaceState>) : getDefaultWorkspaceState() };
   } catch {
-    return getDefaultWorkspaceState();
+    return { value: getDefaultWorkspaceState(), warning: 'Workspace preferences could not be restored.' };
   }
 };
 
-const getInitialTheme = (): 'light' | 'dark' => {
-  if (typeof window === 'undefined') {
-    return 'light';
-  }
-  const stored = window.localStorage.getItem('theme');
-  if (stored === 'light' || stored === 'dark') {
-    return stored;
+const getInitialTheme = (): { value: 'light' | 'dark'; warning?: string } => {
+  try {
+    const stored = window.localStorage.getItem('theme');
+    if (stored === 'light' || stored === 'dark') return { value: stored };
+  } catch {
+    return { value: 'light', warning: 'Theme preference could not be restored.' };
   }
   if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
-    return 'dark';
+    return { value: 'dark' };
   }
-  return 'light';
+  return { value: 'light' };
 };
 
 const getInitialCompactMode = () =>
@@ -382,9 +378,8 @@ export const App = () => {
   const initialGraphRef = useRef<GraphData>(graphDocumentToRuntimeGraph(initialDocumentState.document));
   const storeRef = useRef<GraphDocumentStore>(new GraphDocumentStore(initialDocumentState.document));
   const [storeSnapshot, setStoreSnapshot] = useState<DocumentStoreSnapshot>(storeRef.current.getSnapshot());
-  const storageRef = useRef<GraphDocumentStorage | null>(
-    typeof window === 'undefined' ? null : new GraphDocumentStorage(window.localStorage),
-  );
+  const storageRef = useRef(initialDocumentState.storage);
+  const autosaveRef = useRef<AutosaveSession | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<GraphController | null>(null);
   const animationFramesRef = useRef<Set<number>>(new Set());
@@ -397,15 +392,21 @@ export const App = () => {
     initialDocumentState.document.settings.simulation,
   );
   const [documentStatus, setDocumentStatus] = useState(initialDocumentState.status);
-  const [isDocumentDirty, setIsDocumentDirty] = useState(false);
+  const [autosaveState, setAutosaveState] = useState<AutosaveState>({
+    dirty: false, saving: false, paused: initialDocumentState.saveBlocked, warning: initialDocumentState.warning,
+  });
   const [viewStack, setViewStack] = useState<GraphViewFrame[]>([]);
   const viewStackRef = useRef<GraphViewFrame[]>([]);
   const [selectedIdentity, setSelectedIdentity] = useState<ScopedNodeIdentity | undefined>();
   const [diagnostics, setDiagnostics] = useState<ComputeDiagnostic[]>([]);
   const [graphSnapshot, setGraphSnapshot] = useState<GraphData>(initialGraphRef.current);
   const [isHierarchyFocusEnabled, setIsHierarchyFocusEnabled] = useState(true);
-  const [theme, setTheme] = useState<'light' | 'dark'>(getInitialTheme);
-  const [workspaceState, setWorkspaceState] = useState<WorkspaceState>(loadWorkspaceState);
+  const [initialTheme] = useState(getInitialTheme);
+  const [initialWorkspace] = useState(loadWorkspaceState);
+  const [theme, setTheme] = useState(initialTheme.value);
+  const [workspaceState, setWorkspaceState] = useState(initialWorkspace.value);
+  const [themeWarning, setThemeWarning] = useState(initialTheme.warning);
+  const [workspaceWarning, setWorkspaceWarning] = useState(initialWorkspace.warning);
   const [isCompactWorkspace, setIsCompactWorkspace] = useState(getInitialCompactMode);
   const [activeCompactTab, setActiveCompactTab] = useState<PanelType>('graph');
 
@@ -612,7 +613,6 @@ export const App = () => {
       if (snapshot.revision !== projectedRevisionRef.current) {
         projectedRevisionRef.current = snapshot.revision;
         projectSnapshot(snapshot);
-        setIsDocumentDirty(true);
         setDocumentStatus('Unsaved changes');
       }
     });
@@ -630,7 +630,12 @@ export const App = () => {
       return;
     }
     document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem('theme', theme);
+    try {
+      window.localStorage.setItem('theme', theme);
+      setThemeWarning(undefined);
+    } catch {
+      setThemeWarning('Theme changes apply here but could not be saved.');
+    }
   }, [theme]);
 
   useEffect(() => {
@@ -642,20 +647,49 @@ export const App = () => {
   }, []);
 
   useEffect(() => {
-    if (!isDocumentDirty) {
-      return;
-    }
-    const timeout = window.setTimeout(() => {
-      try {
-        const revision = storageRef.current?.save(storeSnapshot.document);
-        setIsDocumentDirty(false);
-        setDocumentStatus(revision ? `Saved revision ${revision}` : 'Document validated');
-      } catch (error) {
-        setDocumentStatus(`Autosave blocked: ${error instanceof Error ? error.message : 'invalid document'}`);
+    const session = new AutosaveSession(storageRef.current, browserExclusiveWrite, (state) => {
+      setAutosaveState(state);
+      if (state.savedRevision && !state.dirty) setDocumentStatus(`Saved revision ${state.savedRevision}`);
+    }, initialDocumentState);
+    autosaveRef.current = session;
+    let revision = storeRef.current.getSnapshot().revision;
+    const unsubscribe = storeRef.current.subscribe((snapshot) => {
+      if (snapshot.revision !== revision) {
+        revision = snapshot.revision;
+        session.edit(snapshot.document);
       }
-    }, AUTOSAVE_DEBOUNCE_MS);
-    return () => window.clearTimeout(timeout);
-  }, [isDocumentDirty, storeSnapshot.document]);
+    });
+    const flush = () => { void session.flush(); };
+    const visibility = () => { if (document.visibilityState === 'hidden') flush(); };
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      flush();
+      if (session.getSnapshot().dirty || document.querySelector('[data-numeric-draft][data-uncommitted="true"]')) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    const storage = (event: StorageEvent) => {
+      if (isDocumentStorageKey(event.key)) void session.checkForConflict();
+    };
+    const check = () => { void session.checkForConflict(); };
+    window.addEventListener('storage', storage);
+    window.addEventListener('focus', check);
+    window.addEventListener('pageshow', check);
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('beforeunload', beforeUnload);
+    document.addEventListener('visibilitychange', visibility);
+    return () => {
+      unsubscribe();
+      session.dispose();
+      autosaveRef.current = null;
+      window.removeEventListener('storage', storage);
+      window.removeEventListener('focus', check);
+      window.removeEventListener('pageshow', check);
+      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('beforeunload', beforeUnload);
+      document.removeEventListener('visibilitychange', visibility);
+    };
+  }, [initialDocumentState]);
 
   const handleNodeChange = (nodeId: string, data: Partial<EconNodeData>) => {
     const path = currentGraphPath(viewStackRef.current);
@@ -949,7 +983,12 @@ export const App = () => {
     if (typeof window === 'undefined') {
       return;
     }
-    window.localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(workspaceState));
+    try {
+      window.localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(workspaceState));
+      setWorkspaceWarning(undefined);
+    } catch {
+      setWorkspaceWarning('Layout changes apply here but could not be saved.');
+    }
   }, [workspaceState]);
 
   useEffect(() => {
@@ -1139,6 +1178,28 @@ export const App = () => {
         <h1>NodeSim authoring</h1>
         <span>Build and inspect a typed simulation graph.</span>
       </header>
+      {(autosaveState.warning || themeWarning || workspaceWarning) && (
+        <section className="storage-notice" aria-label="Storage status">
+          <p role="status">{[autosaveState.warning, themeWarning, workspaceWarning].filter(Boolean).join(' ')}</p>
+          <div className="storage-notice-actions">
+            <button type="button" onClick={() => {
+              downloadDocument(handleExport());
+              setDocumentStatus('Project save started. Check browser downloads.');
+            }}>Export this document</button>
+            {autosaveState.dirty && !autosaveState.paused && (
+              <button type="button" disabled={autosaveState.saving} onClick={() => { void autosaveRef.current?.flush(); }}>Retry autosave</button>
+            )}
+            {autosaveState.warning && (
+              <button type="button" onClick={() => {
+                void autosaveRef.current?.loadSaved(demoGraph as GraphData, (document) => {
+                  storeRef.current.execute({ type: 'replace-document', document }, undefined);
+                  setDocumentStatus('Loaded saved data. Previous local edits are available through Undo.');
+                });
+              }}>Load saved version (local edits remain in Undo)</button>
+            )}
+          </div>
+        </section>
+      )}
       {isCompactWorkspace ? (
         <main className="compact-workspace">
           <div className="compact-tabs" role="tablist" aria-label="Authoring views">
