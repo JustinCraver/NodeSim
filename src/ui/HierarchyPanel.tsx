@@ -68,17 +68,17 @@ const nodeValue = (node: EconNodeData) => {
 const nodePorts = (node: EconNodeData) => {
   if (node.kind === 'custom' && node.custom) {
     return [
-      ...node.custom.inputs.map((port) => `input ${port.label}, ${port.valueType ?? 'scalar'}`),
-      ...node.custom.outputs.map((port) => `output ${port.label}, ${port.valueType ?? 'scalar'}`),
+      ...node.custom.inputs.map((port) => ({ id: `input:${port.id}`, text: `input ${port.label}, ${port.valueType ?? 'scalar'}` })),
+      ...node.custom.outputs.map((port) => ({ id: `output:${port.id}`, text: `output ${port.label}, ${port.valueType ?? 'scalar'}` })),
     ];
   }
   if (node.kind === 'asset') {
-    return ['output Balance series, timeseries', 'output Ending balance, scalar'];
+    return [{ id: 'balance', text: 'output Balance series, timeseries' }, { id: 'endingBalance', text: 'output Ending balance, scalar' }];
   }
   if (node.kind === 'add' || node.kind === 'subtract' || node.kind === 'multiply' || node.kind === 'divide') {
-    return ['input 1, scalar', 'input 2, scalar', 'output Result, scalar'];
+    return [{ id: 'input:1', text: 'input 1, scalar' }, { id: 'input:2', text: 'input 2, scalar' }, { id: 'output', text: 'output Result, scalar' }];
   }
-  return node.kind === 'text' ? [] : ['output Value'];
+  return node.kind === 'text' ? [] : [{ id: 'output', text: 'output Value' }];
 };
 
 const diagnosticsFor = (
@@ -194,7 +194,7 @@ export const HierarchyPanel = ({
                 <button type="button" role="treeitem" aria-selected={selected} className="semantic-tree-item" onClick={() => onSelectNode(identity)}>
                   <span className="semantic-item-title">{node.label || node.id}</span>
                   <span className="semantic-item-detail">{KIND_LABELS[node.kind]}, value {nodeValue(node)}</span>
-                  {nodePorts(node).map((port) => <span key={port} className="semantic-item-detail">Port: {port}</span>)}
+                  {nodePorts(node).map((port) => <span key={port.id} className="semantic-item-detail">Port: {port.text}</span>)}
                   {errors.map((error) => <span key={error.message} className="semantic-item-error">Error: {error.message}</span>)}
                 </button>
               </div>

@@ -7,9 +7,8 @@ import {
 } from '../document/graphDocument';
 import {
   diagnoseCustomBindings,
-  getCompatibleInputBindingNodes,
-  getCompatibleOutputBindingNodes,
   repairCustomBindings,
+  type CustomBindingRepairResult,
 } from '../graph/customBindings';
 import type {
   ComputeDiagnostic,
@@ -20,9 +19,9 @@ import type {
   NodeKind,
   PortDef,
   TimeUnit,
-  ValueType,
 } from '../models/types';
 import { NumericDraftField } from './NumericDraftField';
+import { CustomPortsEditor } from './CustomPortsEditor';
 
 const TIME_UNIT_OPTIONS: { value: TimeUnit; label: string }[] = [
   { value: 'per_day', label: 'Per Day' },
@@ -64,12 +63,11 @@ const BINARY_PORT_OPTIONS: PortDef[] = [
   { id: '2', label: '2', valueType: 'scalar' },
 ];
 
-const COMPUTATIONAL_VALUE_TYPES: Exclude<ValueType, 'none'>[] = ['scalar', 'monthly-flow', 'timeseries'];
-
 type InspectorPanelProps = {
   node: EconNodeData | null;
   edge: EconEdgeData | null;
-  onChange: (nodeId: string, data: Partial<EconNodeData>) => void;
+  onChange: (nodeId: string, data: Partial<EconNodeData>) => boolean;
+  onChangeCustom: (nodeId: string, custom: CustomNodeConfig, mode: 'ports' | 'repair') => string | undefined;
   onChangeEdge: (edgeId: string, data: Partial<EconEdgeData>) => void;
   getNodeById: (nodeId: string) => EconNodeData | null;
   onDeleteNode: (nodeId: string) => void;
@@ -77,6 +75,7 @@ type InspectorPanelProps = {
   graphPath: string;
   diagnostics: readonly ComputeDiagnostic[];
   selectionKey?: string;
+  documentRevision: number;
 };
 
 const DiagnosticList = ({ diagnostics }: { diagnostics: readonly ComputeDiagnostic[] }) => {
@@ -109,6 +108,7 @@ export const InspectorPanel = ({
   node,
   edge,
   onChange,
+  onChangeCustom,
   onChangeEdge,
   getNodeById,
   onDeleteNode,
@@ -116,9 +116,11 @@ export const InspectorPanel = ({
   graphPath,
   diagnostics,
   selectionKey,
+  documentRevision,
 }: InspectorPanelProps) => {
   const [internalGraphText, setInternalGraphText] = useState('');
   const [internalGraphError, setInternalGraphError] = useState<string | null>(null);
+  const [bindingRepair, setBindingRepair] = useState<CustomBindingRepairResult | null>(null);
   const internalGraphId = useId();
   const internalGraphErrorId = `${internalGraphId}-error`;
 
@@ -129,7 +131,8 @@ export const InspectorPanel = ({
     const graph = node.custom?.internalGraph ?? { nodes: [], edges: [] };
     setInternalGraphText(JSON.stringify(graph, null, 2));
     setInternalGraphError(null);
-  }, [node?.id, node?.kind, selectionKey]);
+    setBindingRepair(null);
+  }, [node?.id, node?.kind, selectionKey, JSON.stringify(node?.custom)]);
 
   if (!node && !edge) {
     return (
@@ -260,11 +263,6 @@ export const InspectorPanel = ({
   );
   const formulaError = activeNode.kind === 'calc' ? nodeDiagnostics[0] : undefined;
   const formulaErrorId = `${internalGraphId}-formula-error`;
-  const bindingDiagnostics =
-    activeNode.kind === 'custom' && customConfig
-      ? diagnoseCustomBindings(customConfig, graphPath, activeNode.id)
-      : [];
-
   const handleTextChange =
     (field: keyof EconNodeData) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       onChange(activeNode.id, { [field]: event.target.value } as Partial<EconNodeData>);
@@ -276,10 +274,6 @@ export const InspectorPanel = ({
 
   const handleFormulaTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     onChange(activeNode.id, { outputType: event.target.value as FormulaValueType });
-  };
-
-  const handleCustomUpdate = (config: CustomNodeConfig) => {
-    onChange(activeNode.id, { custom: config });
   };
 
   const createDefaultCustomConfig = (): CustomNodeConfig => {
@@ -376,112 +370,6 @@ export const InspectorPanel = ({
     onChange(activeNode.id, update);
   };
 
-  const createPortId = (prefix: string) => `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-
-  const addPort = (type: 'input' | 'output') => {
-    if (!activeNode.custom) {
-      return;
-    }
-    const id = createPortId(type);
-    const newPort: PortDef = {
-      id,
-      label: type === 'input' ? 'Input' : 'Output',
-      valueType: 'scalar',
-      ...(type === 'output' ? { formulaId: id } : {}),
-    };
-    if (type === 'input') {
-      handleCustomUpdate({
-        ...activeNode.custom,
-        inputs: [...activeNode.custom.inputs, newPort],
-        inputBindings: { ...activeNode.custom.inputBindings, [id]: '' },
-      });
-    } else {
-      handleCustomUpdate({
-        ...activeNode.custom,
-        outputs: [...activeNode.custom.outputs, newPort],
-        outputBindings: { ...activeNode.custom.outputBindings, [id]: '' },
-      });
-    }
-  };
-
-  const removePort = (type: 'input' | 'output', portId: string) => {
-    if (!activeNode.custom) {
-      return;
-    }
-    if (type === 'input') {
-      const nextBindings = { ...activeNode.custom.inputBindings };
-      delete nextBindings[portId];
-      handleCustomUpdate({
-        ...activeNode.custom,
-        inputs: activeNode.custom.inputs.filter((port) => port.id !== portId),
-        inputBindings: nextBindings,
-      });
-    } else {
-      const nextBindings = { ...activeNode.custom.outputBindings };
-      delete nextBindings[portId];
-      handleCustomUpdate({
-        ...activeNode.custom,
-        outputs: activeNode.custom.outputs.filter((port) => port.id !== portId),
-        outputBindings: nextBindings,
-      });
-    }
-  };
-
-  const updatePortLabel = (type: 'input' | 'output', portId: string, label: string) => {
-    if (!activeNode.custom) {
-      return;
-    }
-    if (type === 'input') {
-      handleCustomUpdate({
-        ...activeNode.custom,
-        inputs: activeNode.custom.inputs.map((port) => (port.id === portId ? { ...port, label } : port)),
-      });
-    } else {
-      handleCustomUpdate({
-        ...activeNode.custom,
-        outputs: activeNode.custom.outputs.map((port) => (port.id === portId ? { ...port, label } : port)),
-      });
-    }
-  };
-
-  const updatePortType = (type: 'input' | 'output', portId: string, valueType: Exclude<ValueType, 'none'>) => {
-    if (!activeNode.custom) {
-      return;
-    }
-    const key = type === 'input' ? 'inputs' : 'outputs';
-    handleCustomUpdate({
-      ...activeNode.custom,
-      [key]: activeNode.custom[key].map((port) => (port.id === portId ? { ...port, valueType } : port)),
-    });
-  };
-
-  const updateOutputFormulaId = (portId: string, formulaId: string) => {
-    if (!activeNode.custom) {
-      return;
-    }
-    handleCustomUpdate({
-      ...activeNode.custom,
-      outputs: activeNode.custom.outputs.map((port) => (port.id === portId ? { ...port, formulaId } : port)),
-    });
-  };
-
-  const updateBinding = (type: 'input' | 'output', portId: string, value: string) => {
-    if (!activeNode.custom) {
-      return;
-    }
-    if (type === 'input') {
-      handleCustomUpdate({
-        ...activeNode.custom,
-        inputBindings: { ...activeNode.custom.inputBindings, [portId]: value },
-      });
-    } else {
-      handleCustomUpdate({
-        ...activeNode.custom,
-        outputBindings: { ...activeNode.custom.outputBindings, [portId]: value },
-      });
-    }
-  };
-
   const handleApplyInternalGraph = () => {
     if (!activeNode.custom) {
       return;
@@ -489,10 +377,21 @@ export const InspectorPanel = ({
     try {
       const parsed = JSON.parse(internalGraphText) as unknown;
       const validated = graphDocumentToRuntimeGraph(migrateGraphDocument(parsed));
-      handleCustomUpdate({ ...activeNode.custom, internalGraph: validated });
+      const candidate = { ...activeNode.custom, internalGraph: validated };
+      if (diagnoseCustomBindings(candidate, graphPath, activeNode.id).length > 0) {
+        setBindingRepair(repairCustomBindings(candidate, graphPath, activeNode.id));
+        setInternalGraphError('This graph draft breaks existing bindings. Review the explicit repair below or correct the draft.');
+        return;
+      }
+      if (!onChange(activeNode.id, { custom: candidate })) {
+        setInternalGraphError('The graph could not be applied. Check the document status for the validation error.');
+        return;
+      }
       setInternalGraphText(JSON.stringify(validated, null, 2));
       setInternalGraphError(null);
+      setBindingRepair(null);
     } catch (error) {
+      setBindingRepair(null);
       setInternalGraphError(error instanceof Error ? error.message : 'Invalid internal graph JSON.');
     }
   };
@@ -591,146 +490,12 @@ export const InspectorPanel = ({
       )}
       {activeNode.kind === 'custom' && customConfig && (
         <>
-          {bindingDiagnostics.length > 0 && (
-            <div className="panel-section">
-              <div className="label">Binding Repair</div>
-              <p>Bindings are unchanged. Repair creates typed zero-value placeholders only when you choose it.</p>
-              <DiagnosticList diagnostics={bindingDiagnostics} />
-              <button
-                type="button"
-                onClick={() => {
-                  const repaired = repairCustomBindings(customConfig, graphPath, activeNode.id);
-                  handleCustomUpdate(repaired.custom);
-                  setInternalGraphError(
-                    repaired.unresolvedDiagnostics.length > 0
-                      ? `${repaired.unresolvedDiagnostics.length} binding issue(s) still require manual repair.`
-                      : null,
-                  );
-                }}
-              >
-                Repair Invalid Bindings
-              </button>
-            </div>
-          )}
-          <div className="panel-section">
-            <div className="label">Inputs</div>
-            <p className="destructive-help">Removing a port also removes incompatible connections. Undo restores both.</p>
-            {customConfig.inputs.map((port) => (
-              <div
-                key={port.id}
-                className="custom-port-row"
-              >
-                <input
-                  type="text"
-                  value={port.label}
-                  onChange={(event) => updatePortLabel('input', port.id, event.target.value)}
-                />
-                <select
-                  value={port.valueType ?? 'scalar'}
-                  onChange={(event) =>
-                    updatePortType('input', port.id, event.target.value as Exclude<ValueType, 'none'>)
-                  }
-                >
-                  {COMPUTATIONAL_VALUE_TYPES.map((valueType) => (
-                    <option key={valueType} value={valueType}>
-                      {valueType}
-                    </option>
-                  ))}
-                </select>
-                <span className="custom-port-id">{port.id}</span>
-                <button type="button" onClick={() => removePort('input', port.id)}>
-                  Remove input
-                </button>
-              </div>
-            ))}
-            <button type="button" style={{ marginTop: '12px' }} onClick={() => addPort('input')}>
-              Add Input
-            </button>
-          </div>
-          <div className="panel-section">
-            <div className="label">Outputs</div>
-            {customConfig.outputs.map((port) => (
-              <div
-                key={port.id}
-                className="custom-port-row"
-              >
-                <input
-                  type="text"
-                  value={port.label}
-                  onChange={(event) => updatePortLabel('output', port.id, event.target.value)}
-                />
-                <select
-                  value={port.valueType ?? 'scalar'}
-                  onChange={(event) =>
-                    updatePortType('output', port.id, event.target.value as Exclude<ValueType, 'none'>)
-                  }
-                >
-                  {COMPUTATIONAL_VALUE_TYPES.map((valueType) => (
-                    <option key={valueType} value={valueType}>
-                      {valueType}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  aria-label={`${port.label} formula identity`}
-                  value={port.formulaId ?? ''}
-                  onChange={(event) => updateOutputFormulaId(port.id, event.target.value)}
-                />
-                <span className="custom-port-id">{port.id}</span>
-                <button type="button" onClick={() => removePort('output', port.id)}>
-                  Remove output
-                </button>
-              </div>
-            ))}
-            <button type="button" style={{ marginTop: '12px' }} onClick={() => addPort('output')}>
-              Add Output
-            </button>
-          </div>
-          <div className="panel-section">
-            <div className="label">Input Bindings</div>
-            {customConfig.inputs.map((port) => (
-              <label key={port.id} className="panel-section" style={{ marginTop: '12px' }}>
-                <span className="label">
-                  {port.label} ({port.id})
-                </span>
-                <select
-                  value={customConfig.inputBindings[port.id] ?? ''}
-                  onChange={(event) => updateBinding('input', port.id, event.target.value)}
-                >
-                  <option value="">Unbound</option>
-                  {getCompatibleInputBindingNodes(customConfig.internalGraph, port.valueType ?? 'scalar')
-                    .map((internal) => (
-                    <option key={internal.id} value={internal.id}>
-                      {internal.label} ({internal.id})
-                    </option>
-                    ))}
-                </select>
-              </label>
-            ))}
-          </div>
-          <div className="panel-section">
-            <div className="label">Output Bindings</div>
-            {customConfig.outputs.map((port) => (
-              <label key={port.id} className="panel-section" style={{ marginTop: '12px' }}>
-                <span className="label">
-                  {port.label} ({port.id})
-                </span>
-                <select
-                  value={customConfig.outputBindings[port.id] ?? ''}
-                  onChange={(event) => updateBinding('output', port.id, event.target.value)}
-                >
-                  <option value="">Unbound</option>
-                  {getCompatibleOutputBindingNodes(customConfig.internalGraph, port.valueType ?? 'scalar')
-                    .map((internal) => (
-                    <option key={internal.id} value={internal.id}>
-                      {internal.label} ({internal.id})
-                    </option>
-                    ))}
-                </select>
-              </label>
-            ))}
-          </div>
+          <CustomPortsEditor
+            key={selectionKey ?? activeNode.id}
+            custom={customConfig}
+            documentRevision={documentRevision}
+            onCommit={(custom) => onChangeCustom(activeNode.id, custom, 'ports')}
+          />
           <div className="panel-section">
             <label className="label" htmlFor={internalGraphId}>Internal graph</label>
             <textarea
@@ -739,13 +504,28 @@ export const InspectorPanel = ({
               value={internalGraphText}
               aria-invalid={internalGraphError ? 'true' : undefined}
               aria-describedby={internalGraphError ? internalGraphErrorId : undefined}
-              onChange={(event) => setInternalGraphText(event.target.value)}
+              onChange={(event) => { setInternalGraphText(event.target.value); setBindingRepair(null); setInternalGraphError(null); }}
               style={{ width: '100%', marginTop: '12px' }}
             />
             {internalGraphError && <div id={internalGraphErrorId} className="field-error">{internalGraphError}</div>}
             <button type="button" style={{ marginTop: '12px' }} onClick={handleApplyInternalGraph}>
               Apply Internal Graph
             </button>
+            {bindingRepair && (
+              <section className="custom-port-draft" aria-label="Binding repair preview">
+                <p>Repair will add typed zero-value placeholder nodes for these ports: {bindingRepair.repairedPortIds.join(', ') || 'none'}. The current graph stays unchanged until you apply the repair.</p>
+                <DiagnosticList diagnostics={bindingRepair.unresolvedDiagnostics} />
+                <button type="button" disabled={bindingRepair.unresolvedDiagnostics.length > 0} onClick={() => {
+                  const error = onChangeCustom(activeNode.id, bindingRepair.custom, 'repair');
+                  if (error) setInternalGraphError(error);
+                  else {
+                    setInternalGraphText(JSON.stringify(bindingRepair.custom.internalGraph, null, 2));
+                    setBindingRepair(null);
+                    setInternalGraphError(null);
+                  }
+                }}>Repair bindings and apply graph</button>
+              </section>
+            )}
           </div>
         </>
       )}

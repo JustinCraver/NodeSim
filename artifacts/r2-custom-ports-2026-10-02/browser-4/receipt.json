@@ -1,0 +1,10 @@
+{
+  "result": "FAIL",
+  "recordedAt": "2026-10-02T08:17:54.459Z",
+  "url": "http://127.0.0.1:5198/NodeSim/",
+  "checks": [
+    "desktop: keyboard add input is atomic; rejected/uncommitted drafts do not export; unload protection and Undo/Redo work without creating nodes"
+  ],
+  "errors": [],
+  "failure": "TimeoutError: locator.focus: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('region', { name: 'Output port extra_output', exact: true }).getByRole('button', { name: 'Remove output', exact: true })\u001b[22m\n"
+}

@@ -1,0 +1,10 @@
+{
+  "result": "FAIL",
+  "recordedAt": "2026-10-02T08:21:29.525Z",
+  "url": "http://127.0.0.1:5198/NodeSim/",
+  "checks": [
+    "desktop: keyboard add input is atomic; rejected/uncommitted drafts do not export; unload protection and Undo/Redo work without creating nodes"
+  ],
+  "errors": [],
+  "failure": "AssertionError [ERR_ASSERTION]: One keyboard connection must create one edge\n\n2 !== 1\n"
+}

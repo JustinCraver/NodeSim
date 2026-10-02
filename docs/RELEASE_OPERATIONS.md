@@ -82,6 +82,36 @@ This command is focused local R1 evidence; it is not part of hosted CI, does not
 prove forced-process crash durability, and does not close manual accessibility
 or the broader browser matrix in R8. Core fault tests remain in `ci:verify`.
 
+## Custom-port browser verification
+
+R2 has a focused optional runner at
+[`scripts/custom-ports-browser-check.mjs`](../scripts/custom-ports-browser-check.mjs).
+It uses the same separately available Playwright runtime/browser as the recovery
+runner and installs no dependencies. Use a dedicated loopback origin and a fresh
+output directory:
+
+```powershell
+npm.cmd run dev -- --port 5198 --strictPort
+# In another terminal; omit this variable if Playwright is already resolvable:
+$env:PLAYWRIGHT_MODULE_PATH = '<absolute path to the available playwright package>'
+node scripts/custom-ports-browser-check.mjs http://127.0.0.1:5198/NodeSim/ artifacts/custom-ports-browser
+```
+
+Fresh desktop and 390 px browser contexts exercise the rendered React Inspector
+and real controller. Checks cover keyboard add/edit/remove for input and output
+ports, combined type/binding edits, strict candidate rejection, cancellation,
+pending-draft unload protection, compatible/incompatible connections, one edge
+per keyboard activation, Undo/Redo, JSON file import/export, explicit graph repair,
+and nested scopes with repeated local IDs. The runner checks exports against
+complete expected root documents and retains screenshots and `receipt.json`,
+including a failure screenshot when possible. Inspect those screenshots; a
+passing command alone is not rendered layout acceptance.
+
+This is focused local authoring evidence. It does not complete R3's instance
+computation work, the broader R8 matrix, manual screen-reader/OS-picker checks,
+hosted CI, dependency advisory review, or deployment acceptance. Dated R1 and
+Stage 7/8 evidence remains unchanged.
+
 ## Security and dependency review
 
 Every response under `/NodeSim/` must carry the exact values in

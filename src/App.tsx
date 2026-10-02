@@ -8,6 +8,7 @@ import ReactGridLayout, {
 } from 'react-grid-layout';
 import type {
   ComputeDiagnostic,
+  CustomNodeConfig,
   EconEdgeData,
   EconNodeData,
   GraphData,
@@ -663,7 +664,7 @@ export const App = () => {
     const visibility = () => { if (document.visibilityState === 'hidden') flush(); };
     const beforeUnload = (event: BeforeUnloadEvent) => {
       flush();
-      if (session.getSnapshot().dirty || document.querySelector('[data-numeric-draft][data-uncommitted="true"]')) {
+      if (session.getSnapshot().dirty || document.querySelector('[data-numeric-draft][data-uncommitted="true"], [data-port-draft][data-uncommitted="true"]')) {
         event.preventDefault();
         event.returnValue = '';
       }
@@ -696,25 +697,37 @@ export const App = () => {
     const root = graphDocumentToRuntimeGraph(storeRef.current.getSnapshot().document);
     const current = getGraphAtPath(root, path).nodes.find((node) => node.id === nodeId);
     if (!current) {
-      return;
+      return false;
     }
     const selection: DocumentSelection = { graphPath: path, kind: 'node', id: nodeId, focus: true };
     if (data.kind && data.kind !== current.kind) {
-      executeCommand({ type: 'change-node-type', graphPath: path, nodeId, changes: data }, selection);
-      return;
+      return executeCommand({ type: 'change-node-type', graphPath: path, nodeId, changes: data }, selection);
     }
     if (data.custom && current.kind === 'custom' && current.custom) {
       if (JSON.stringify(data.custom.internalGraph) !== JSON.stringify(current.custom.internalGraph)) {
-        executeCommand(
+        return executeCommand(
           { type: 'replace-nested-graph', graphPath: appendGraphPath(path, nodeId), graph: data.custom.internalGraph },
           selection,
         );
       } else {
-        executeCommand({ type: 'update-custom-ports', graphPath: path, nodeId, custom: data.custom }, selection);
+        return executeCommand({ type: 'update-custom-ports', graphPath: path, nodeId, custom: data.custom }, selection);
       }
-      return;
     }
-    executeCommand({ type: 'update-node', graphPath: path, nodeId, changes: data }, selection);
+    return executeCommand({ type: 'update-node', graphPath: path, nodeId, changes: data }, selection);
+  };
+
+  const handleCustomChange = (nodeId: string, custom: CustomNodeConfig, mode: 'ports' | 'repair') => {
+    const path = currentGraphPath(viewStackRef.current);
+    try {
+      storeRef.current.execute({ type: mode === 'ports' ? 'update-custom-ports' : 'repair-custom-bindings', graphPath: path, nodeId, custom },
+        { graphPath: path, kind: 'node', id: nodeId, focus: true });
+      setDocumentStatus(mode === 'ports' ? 'Applied custom ports and connection cleanup. Undo is available.' : 'Applied graph and binding repair. Undo is available.');
+      return undefined;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Custom edit rejected';
+      setDocumentStatus(message);
+      return message;
+    }
   };
 
   const handleNodeDelete = (nodeId: string) => {
@@ -1154,6 +1167,7 @@ export const App = () => {
           node={selectedNode}
           edge={selectedEdge}
           onChange={handleNodeChange}
+          onChangeCustom={handleCustomChange}
           onChangeEdge={handleEdgeChange}
           getNodeById={getNodeById}
           onDeleteNode={handleNodeDelete}
@@ -1161,6 +1175,7 @@ export const App = () => {
           graphPath={formatGraphPath(activeGraphPath)}
           diagnostics={diagnostics}
           selectionKey={selectedIdentity ? scopedNodeKey(selectedIdentity) : undefined}
+          documentRevision={storeSnapshot.revision}
         />
       </WorkspacePanel>
     );

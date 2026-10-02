@@ -160,8 +160,8 @@ const formulaSafeId = (value: string, fallback: string, used: Set<string>) => {
   return unique;
 };
 
-const getRuntimeNodeOutputType = (
-  graph: AuthoredGraphData,
+export const getRuntimeNodeOutputType = (
+  graph: GraphData,
   nodeId: string,
   sourcePort?: string,
   visiting = new Set<string>(),
@@ -181,13 +181,13 @@ const getRuntimeNodeOutputType = (
     case 'output':
       return 'scalar';
     case 'calc':
-      return node.outputType;
+      return node.outputType ?? 'scalar';
     case 'asset':
       return sourcePort === 'balance' ? 'timeseries' : 'scalar';
     case 'custom':
       return sourcePort
-        ? node.custom.outputs.find((port) => port.id === sourcePort)?.valueType
-        : node.custom.outputs.length === 1
+        ? node.custom?.outputs.find((port) => port.id === sourcePort)?.valueType
+        : node.custom?.outputs.length === 1
           ? node.custom.outputs[0].valueType
           : undefined;
     case 'text':
@@ -471,14 +471,18 @@ const migrateGraph = (rawGraph: unknown, path: string, depth: number, legacy: bo
           ),
         };
         if (legacy) {
-          migratedConfig.inputs.forEach((port) => {
+          const rawInputs = readArray(custom.inputs, `${customPath}.inputs`);
+          const rawOutputs = readArray(custom.outputs, `${customPath}.outputs`);
+          migratedConfig.inputs.forEach((port, portIndex) => {
+            if (readRecord(rawInputs[portIndex], `${customPath}.inputs[${portIndex}]`).valueType !== undefined) return;
             const boundId = migratedConfig.inputBindings[port.id];
             const boundType = getRuntimeNodeOutputType(internalGraph, boundId);
             if (boundType === 'scalar' || boundType === 'monthly-flow' || boundType === 'timeseries') {
               port.valueType = boundType;
             }
           });
-          migratedConfig.outputs.forEach((port) => {
+          migratedConfig.outputs.forEach((port, portIndex) => {
+            if (readRecord(rawOutputs[portIndex], `${customPath}.outputs[${portIndex}]`).valueType !== undefined) return;
             const boundId = migratedConfig.outputBindings[port.id];
             const boundType = getRuntimeNodeOutputType(internalGraph, boundId);
             if (boundType === 'scalar' || boundType === 'monthly-flow' || boundType === 'timeseries') {

@@ -1,0 +1,12 @@
+{
+  "result": "FAIL",
+  "recordedAt": "2026-10-02T08:26:12.522Z",
+  "url": "http://127.0.0.1:5198/NodeSim/",
+  "checks": [
+    "desktop: keyboard add input is atomic; rejected/uncommitted drafts do not export; unload protection and Undo/Redo work without creating nodes",
+    "desktop: keyboard adds a typed asset-series output, retains rejected identity text, connects it, and Undo restores removed port and edge",
+    "desktop: keyboard edits type plus binding for both directions, preserves IDs/compatible edges, and Undo restores type changes and input removal with edges"
+  ],
+  "errors": [],
+  "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n1 !== 0\n"
+}

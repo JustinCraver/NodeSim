@@ -181,13 +181,56 @@ and retained contrast/width evidence. Stage 7 evidence does not claim manual
 screen-reader speech output or operating-system picker acceptance; those remain
 human gates.
 
+## Custom-port authoring and explicit repair
+
+Select a custom node in the graph structure, then use **Add Input**, **Add
+Output**, or a port's **Edit input/output** in the Inspector. The local draft
+contains its label, computational type, and an existing compatible internal
+binding. New ports also have an editable Port ID; existing Port IDs stay fixed
+so connections retain their identity. Outputs have a separate formula identity
+using letters, digits, and underscores, beginning with a letter or underscore.
+Output formula identities must be unique within that custom node. Changing one
+does not rewrite downstream formula text.
+
+Inputs bind scalar ports to internal value nodes and monthly-flow ports to
+income nodes. The current schema has no timeseries input receiver; that picker
+has no compatible candidates. Outputs offer compatible existing computational
+nodes, including asset balance timeseries and arithmetic results inferred from
+authored connections. A nested custom output is usable only when exactly one of
+its outputs matches the chosen type. If no compatible node exists, cancel and
+author one inside the custom graph or choose another type. Adding a port never
+creates internal nodes automatically.
+
+**Apply port** commits the complete port and binding as one validated command.
+Type changes clear an incompatible draft binding so a compatible one can be
+chosen before applying. Invalid or duplicate identities and missing bindings
+keep the draft and inline error visible; authored data, exports, autosave, and
+history remain unchanged. Cancel or Escape discards the draft and restores
+focus to its initiating button. Scope/selection changes, accepted document
+commands (including external Undo/Redo/import), and desktop/compact remounts
+discard local drafts. Recalculation alone does not reset a draft.
+Port drafts trigger unload protection while open, but are never autosaved.
+
+Removing a port removes its attached connections. Changing its type removes
+only newly incompatible attached connections, including invalid scalar lag;
+compatible connections remain. Each successful edit/removal is one command,
+and Undo/Redo restores the ports, bindings, and affected edges together.
+Explicit port types remain intact through later commands and JSON round trips;
+legacy migration infers only port types that were omitted.
+
+Repair has a separate entry point: edit **Internal graph** JSON, then choose
+**Apply Internal Graph**. If the otherwise valid graph draft breaks this custom
+node's bindings, a **Binding repair preview** names the affected ports. No
+authored change occurs at preview time. **Repair bindings and apply graph**
+explicitly adds typed zero-value placeholders and commits the complete graph
+and repaired bindings in one undoable command. Unresolved issues prevent that
+action. Correcting the JSON clears the preview. This repair does not change port
+definitions or external edges. Ordinary **Open** retains strict validation and
+rejects malformed bindings without replacing the current document; it does not
+silently repair imported files. See the [R2 receipt](PROJECT_REVIEW.md#r2-custom-port-authoring).
+
 ## Known authoring limitations
 
-- **Custom ports:** Add Input / Add Output currently submit an empty binding and
-  are rejected. Changing a port's type and binding may also require a combined
-  transaction that the current controls cannot express. Do not remove document
-  validation or silently create bound nodes to work around this. Existing valid
-  imported ports remain usable. See [R2](PROJECT_REVIEW.md#r2-custom-port-authoring).
 - **Nested results:** opening a custom graph recomputes it using local defaults,
   without the parent instance's injected inputs. The demo's Adjusted node shows
   `0` inside while Savings Adjuster produces `1350` at root. The hierarchy also
@@ -223,6 +266,7 @@ simulation settings, applies edge transforms, injects custom inputs during root
 evaluation, and returns derived values plus scoped diagnostics. `formula.ts`
 parses without evaluating JavaScript. `connectionValidation.ts` checks candidate
 connections. [`tests/`](../tests) exercises these core seams; its lifecycle tests
-use a fake graph. A focused R1 browser fault-injection command is documented in
-the [runbook](RELEASE_OPERATIONS.md#recovery-browser-verification); it does not
-replace the broader Stage 7 authoring/accessibility acceptance matrix.
+use a fake graph. Focused R1 fault-injection and R2 custom-port browser commands
+are documented in the [runbook](RELEASE_OPERATIONS.md#recovery-browser-verification)
+and [authoring check](RELEASE_OPERATIONS.md#custom-port-browser-verification).
+They do not replace the broader Stage 7 authoring/accessibility acceptance matrix.

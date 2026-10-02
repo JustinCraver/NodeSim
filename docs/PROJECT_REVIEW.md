@@ -7,7 +7,9 @@ semantic authority; the [roadmap](AUDIT_REMEDIATION_ROADMAP.md) retains stage ga
 
 Follow-up 2026-09-25: R1 recovery remediation is complete, with its own receipt
 under R1 below. The original review verification table remains dated evidence.
-R2 is now the first unfinished recommendation.
+
+Follow-up 2026-10-02: R2 custom-port authoring is complete within the bounded
+engineering scope below. R3 is now the first unfinished recommendation.
 
 ## Assessment and scope
 
@@ -78,17 +80,15 @@ Existing release artifacts were not repackaged or overwritten.
 
 ## Best next three actions
 
-R1 was implemented in the 2026-09-25 recovery pass below. The next unfinished
+R1 and R2 were implemented in their dated passes below. The next unfinished
 recommendations are:
 
-1. **R2: complete custom-port transactions**, because a visible core authoring
-   command currently cannot succeed. Start with selecting an existing compatible
-   binding and committing the complete port in one command; no schema relaxation
-   or automatic node creation is needed.
-2. **R3: make nested inspection trustworthy**, so visible results and diagnostics
+1. **R3: make nested inspection trustworthy**, so visible results and diagnostics
    agree with the root instance. Confirm whether nested views should display live
    instance results or an explicitly labeled isolated preview before implementing.
-3. **R4: make release packaging immutable**, before creating another candidate.
+2. **R4: make release packaging immutable**, before creating another candidate.
+3. **R5: define the approved precision contract**, before implementing decimal or
+   fixed-point money for financial-decision use.
 
 If packaging is the next task, do **R4 before creating another candidate**.
 Decimal representation/rounding and deployment hosting also need decisions before
@@ -140,7 +140,45 @@ app versions or external writers. Export remains the portable durability path.
 
 ### R2 Custom-port authoring
 
-**P1 · 1–2 days · confirmed in code and browser.**
+**Completed 2026-10-02: bounded custom-port authoring and explicit repair.**
+
+- Add/Edit drafts collect identity, label, type, and a compatible existing binding
+  before one strict `update-custom-ports` command. Existing port IDs stay fixed;
+  output formula identities remain explicit and unique. Rejected drafts remain
+  editable with their validation error, without changing document/history/storage.
+- Removing ports removes their attached edges; type changes remove only newly
+  incompatible attached edges. Compatible edges remain. Undo/Redo restores the
+  complete transaction, including bindings and affected connections.
+- Binding pickers use authored type inference, including arithmetic and asset
+  series outputs. Legacy conversion now infers only omitted port types, preserving
+  explicit declarations through subsequent commands and JSON round trips.
+- Internal-graph JSON has an explicit binding-repair preview/action. Preview
+  changes no authored data; applying adds typed zero-value placeholders and
+  commits graph plus bindings in one undoable command. Ordinary Open remains
+  strict and never repairs malformed bindings implicitly.
+- Drafts reset on selection/scope changes and accepted document revisions, with
+  focus restoration after Apply/Cancel/Escape and unload protection while open.
+  Semantic port rows use authored IDs even when labels repeat. Alt+Enter on the
+  focused Create connection button now invokes one command instead of both its
+  button and dialog handlers.
+
+Verification: final `npm.cmd run ci:verify` PASS, 14 files / 136 tests, coverage
+93.48% transformed bytes / 85.82% functions; typecheck, lint, dependency-major
+gate, production build, all bundle budgets, and local path/reference/header smoke.
+The [R2 receipt](../artifacts/r2-custom-ports-2026-10-02/README.md) retains the
+original failures, corrected browser runs, and inspected screenshots. Its focused
+[browser command](RELEASE_OPERATIONS.md#custom-port-browser-verification) passed
+the real React/controller keyboard workflows at 1440 px and 390 px, including
+type+binding changes, port/edge Undo, strict rejection, root JSON file round trips,
+explicit repair, focus, and nested repeated IDs, with no console/page errors.
+
+This closes R2's implementation task. Nested live-instance results (R3), the broader
+R8 matrix, manual accessibility/OS-picker checks, precision, hosted CI, dependency
+review, and deployment/release acceptance remain open. No schema version or
+approved computational semantics changed; no commit, push, package, or deployment
+was performed.
+
+**Original finding (2026-09-07), retained for context:**
 `InspectorPanel.addPort()` submits an empty binding; `GraphDocumentStore` and
 `graphDocument.ts` reject it. In the demo, Add Input reports
 `custom.inputBindings.<new-id>: must be a non-empty string` and adds nothing.
@@ -148,8 +186,9 @@ Independent type/binding edits can likewise be rejected before the user can
 complete both fields. Malformed imported bindings are rejected before the
 Inspector repair UI can display them.
 
-Provide a small local draft for a port's type, identity, and compatible existing
-binding, then commit one valid `update-custom-ports` command. Define a deliberate
+The recommendation was to provide a small local draft for a port's type,
+identity, and compatible existing binding, then commit one valid
+`update-custom-ports` command. Define a deliberate
 repair entry point separately from strict import; never persist invalid partial
 ports or silently synthesize nodes. **Success:** add/edit/remove input and output
 ports, including type+binding changes, works by keyboard; Undo restores ports and

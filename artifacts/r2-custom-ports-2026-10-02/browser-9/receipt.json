@@ -1,0 +1,12 @@
+{
+  "result": "FAIL",
+  "recordedAt": "2026-10-02T08:27:52.972Z",
+  "url": "http://127.0.0.1:5198/NodeSim/",
+  "checks": [
+    "desktop: keyboard add input is atomic; rejected/uncommitted drafts do not export; unload protection and Undo/Redo work without creating nodes",
+    "desktop: keyboard adds a typed asset-series output, retains rejected identity text, connects it, and Undo restores removed port and edge",
+    "desktop: keyboard edits type plus binding for both directions, preserves IDs/compatible edges, and Undo restores type changes and input removal with edges"
+  ],
+  "errors": [],
+  "failure": "Error: locator.waitFor: Error: strict mode violation: getByText(/unknown internal node absent/) resolved to 3 elements:\n    1) <div aria-hidden=\"true\" class=\"toolbar-status\">$.graph.nodes[1].custom.inputBindings.input: unkn…</div> aka getByText('$.graph.nodes[1].custom.').first()\n    2) <div role=\"status\" class=\"sr-only\" aria-live=\"polite\" aria-atomic=\"true\">$.graph.nodes[1].custom.inputBindings.input: unkn…</div> aka getByRole('status')\n    3) <div class=\"field-error toolbar-file-error\">$.graph.nodes[1].custom.inputBindings.input: unkn…</div> aka getByText('$.graph.nodes[1].custom.').nth(2)\n\nCall log:\n\u001b[2m  - waiting for getByText(/unknown internal node absent/) to be visible\u001b[22m\n"
+}

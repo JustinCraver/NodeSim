@@ -266,7 +266,7 @@ export const Toolbar = ({
               </label>
               {connectError && <p id="connect-error" className="field-error">{connectError}</p>}
               <div className="connect-actions">
-                <button type="button" aria-keyshortcuts="Alt+Enter" title="Create connection (Alt+Enter)" onClick={handleConnect} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); handleConnect(); } }} aria-describedby={connectError ? 'connect-error' : undefined}>Create connection</button>
+                <button type="button" aria-keyshortcuts="Alt+Enter" title="Create connection (Alt+Enter)" onClick={handleConnect} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); handleConnect(); } }} aria-describedby={connectError ? 'connect-error' : undefined}>Create connection</button>
                 <button type="button" className="secondary-button" onClick={closeConnect}>Cancel</button>
               </div>
             </div>

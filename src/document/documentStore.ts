@@ -4,6 +4,7 @@ import {
   migrateGraphDocument,
 } from './graphDocument';
 import { getGraphAtPath, replaceGraphAtPath, type GraphPath } from '../graph/graphScope';
+import { validateConnection } from '../engine/connectionValidation';
 import type {
   CustomNodeConfig,
   EconEdgeData,
@@ -33,6 +34,8 @@ export type DocumentCommand =
   | (GraphCommandBase & Readonly<{ type: 'delete-edge'; edgeId: string }>)
   | (GraphCommandBase &
       Readonly<{ type: 'update-custom-ports'; nodeId: string; custom: CustomNodeConfig }>)
+  | (GraphCommandBase &
+      Readonly<{ type: 'repair-custom-bindings'; nodeId: string; custom: CustomNodeConfig }>)
   | Readonly<{ type: 'replace-nested-graph'; graphPath: GraphPath; graph: GraphData }>
   | Readonly<{ type: 'replace-document'; document: GraphDocument }>
   | Readonly<{ type: 'set-node-scale'; nodeScale: number }>
@@ -169,7 +172,7 @@ const applyGraphCommand = (document: GraphDocument, command: DocumentCommand): G
         }
         const inputIds = new Set(command.custom.inputs.map((port) => port.id));
         const outputIds = new Set(command.custom.outputs.map((port) => port.id));
-        return {
+        const candidate: GraphData = {
           ...graph,
           nodes: graph.nodes.map((candidate) =>
             candidate.id === command.nodeId
@@ -187,6 +190,41 @@ const applyGraphCommand = (document: GraphDocument, command: DocumentCommand): G
               !(edge.target === command.nodeId && edge.targetPort && !inputIds.has(edge.targetPort)) &&
               !(edge.source === command.nodeId && edge.sourcePort && !outputIds.has(edge.sourcePort)),
           ),
+        };
+        // Validate the complete port/binding candidate before considering edge cleanup.
+        const validated = graphDocumentToRuntimeGraph(migrateGraphDocument({ ...document, graph: candidate }));
+        const changedType = (direction: 'input' | 'output', portId: string | undefined) => {
+          const key = direction === 'input' ? 'inputs' : 'outputs';
+          const before = node.custom![key].find((port) => port.id === portId);
+          const after = command.custom[key].find((port) => port.id === portId);
+          return before && after && before.valueType !== after.valueType;
+        };
+        return {
+          ...validated,
+          edges: validated.edges.filter((edge) => {
+            const affected = (edge.target === node.id && changedType('input', edge.targetPort)) ||
+              (edge.source === node.id && changedType('output', edge.sourcePort));
+            return !affected || validateConnection(
+              { ...validated, edges: validated.edges.filter((other) => other.id !== edge.id) },
+              edge,
+              document.settings.simulation,
+            ).valid;
+          }),
+        };
+      });
+    case 'repair-custom-bindings':
+      return updateGraphAtPath(document, command.graphPath, (graph) => {
+        const node = requireNode(graph, command.nodeId);
+        if (node.kind !== 'custom' || !node.custom) throw new Error(`Node ${command.nodeId} is not a custom node`);
+        if (JSON.stringify(command.custom.inputs) !== JSON.stringify(node.custom.inputs) ||
+          JSON.stringify(command.custom.outputs) !== JSON.stringify(node.custom.outputs)) {
+          throw new Error('Binding repair cannot change port definitions.');
+        }
+        return {
+          ...graph,
+          nodes: graph.nodes.map((candidate) => candidate.id === node.id
+            ? { ...candidate, custom: structuredClone(command.custom) }
+            : candidate),
         };
       });
   }

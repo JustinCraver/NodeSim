@@ -1041,6 +1041,63 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.custom-port-draft {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--button-secondary-border);
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+.custom-port-draft label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.custom-port-draft input,
+.custom-port-draft select,
+.custom-port-draft button {
+  min-width: 0;
+  width: 100%;
+}
+
+.custom-ports button,
+.custom-port-draft button {
+  padding: 10px 12px;
+  border: 1px solid var(--button-secondary-border);
+  border-radius: 6px;
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.custom-ports button:not(:disabled):hover,
+.custom-port-draft button:not(:disabled):hover {
+  background: var(--button-secondary-hover);
+}
+
+.custom-ports button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.custom-port-draft button[type='submit'] {
+  border-color: var(--button-bg);
+  background: var(--button-bg);
+  color: var(--button-text);
+}
+
+.custom-port-draft button[type='submit']:hover {
+  background: var(--button-hover);
+}
+
 .delete-button {
   background: #b91c1c !important;
 }

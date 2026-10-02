@@ -1,0 +1,12 @@
+{
+  "result": "FAIL",
+  "recordedAt": "2026-10-02T08:19:08.447Z",
+  "url": "http://127.0.0.1:5198/NodeSim/",
+  "checks": [
+    "desktop: keyboard add input is atomic; rejected/uncommitted drafts do not export; unload protection and Undo/Redo work without creating nodes",
+    "desktop: keyboard adds a typed asset-series output, retains rejected identity text, connects it, and Undo restores removed port and edge",
+    "desktop: keyboard edits type plus binding for both directions, preserves IDs/compatible edges, and Undo restores type changes and input removal with edges"
+  ],
+  "errors": [],
+  "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n... Skipped lines\n\n  {\n    graph: {\n      edges: [\n        {\n          id: 'source-custom',\n...\n        },\n+       {\n+         id: 'edge-custom-goal-1790929147260-2',\n+         kind: 'flow',\n+         lagMonths: 0,\n+         source: 'custom',\n+         sourcePort: 'extra_output',\n+         target: 'goal',\n+         weight: 1\n+       }\n      ],\n      nodes: [\n        {\n          baseValue: 10,\n          id: 'source',\n"
+}

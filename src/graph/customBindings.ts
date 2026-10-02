@@ -1,3 +1,4 @@
+import { getRuntimeNodeOutputType } from '../document/graphDocument';
 import type {
   ComputeDiagnostic,
   CustomNodeConfig,
@@ -14,7 +15,7 @@ export type CustomBindingRepairResult = {
   unresolvedDiagnostics: ComputeDiagnostic[];
 };
 
-const nodeOutputTypes = (node: EconNodeData): ComputationalValueType[] => {
+const nodeOutputTypes = (graph: GraphData, node: EconNodeData): ComputationalValueType[] => {
   switch (node.kind) {
     case 'income':
     case 'expense':
@@ -36,8 +37,10 @@ const nodeOutputTypes = (node: EconNodeData): ComputationalValueType[] => {
       ];
     case 'text':
       return [];
-    default:
-      return node.valueType && node.valueType !== 'none' ? [node.valueType] : ['scalar'];
+    default: {
+      const type = getRuntimeNodeOutputType(graph, node.id);
+      return type && type !== 'none' ? [type] : [];
+    }
   }
 };
 
@@ -47,7 +50,7 @@ export const getCompatibleInputBindingNodes = (
 ) => valueType === 'none'
   ? []
   : graph.nodes.filter(
-      (node) => (node.kind === 'income' || node.kind === 'value') && nodeOutputTypes(node).includes(valueType),
+      (node) => (node.kind === 'income' || node.kind === 'value') && nodeOutputTypes(graph, node).includes(valueType),
     );
 
 export const getCompatibleOutputBindingNodes = (
@@ -59,7 +62,7 @@ export const getCompatibleOutputBindingNodes = (
       if (node.kind === 'custom') {
         return (node.custom?.outputs ?? []).filter((port) => (port.valueType ?? 'scalar') === valueType).length === 1;
       }
-      return nodeOutputTypes(node).includes(valueType);
+      return nodeOutputTypes(graph, node).includes(valueType);
     });
 
 export const diagnoseCustomBindings = (
