@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import { MAX_HORIZON_MONTHS, MAX_IMPORT_BYTES } from '../document/graphDocument';
 import type { GraphBreadcrumb } from '../graph/graphScope';
 import type { EconNodeData, GraphDocument, NodeKind } from '../models/types';
@@ -34,7 +34,8 @@ type ToolbarProps = {
   nodeScale: number;
   onNodeScaleChange: (value: number) => void;
   horizonMonths: number;
-  onHorizonMonthsChange: (value: number) => void;
+  onHorizonMonthsChange: (value: number) => boolean;
+  documentRevision: number;
   documentStatus: string;
   breadcrumbs: readonly GraphBreadcrumb[];
   onNavigateBreadcrumb: (depth: number) => void;
@@ -58,6 +59,7 @@ export const Toolbar = ({
   onNodeScaleChange,
   horizonMonths,
   onHorizonMonthsChange,
+  documentRevision,
   documentStatus,
   breadcrumbs,
   onNavigateBreadcrumb,
@@ -65,6 +67,7 @@ export const Toolbar = ({
   theme,
   onToggleTheme,
 }: ToolbarProps) => {
+  const connectionId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
@@ -253,14 +256,14 @@ export const Toolbar = ({
             }}>
               <h3 id="connect-title">Connect nodes</h3>
               <label>
-                <span>From</span>
-                <select ref={connectSourceRef} value={sourceId} onChange={(event) => setSourceId(event.target.value)}>
+                <span id={`${connectionId}-from`}>From</span>
+                <select aria-labelledby={`${connectionId}-from`} ref={connectSourceRef} value={sourceId} onChange={(event) => setSourceId(event.target.value)}>
                   {nodes.map((node) => <option key={node.id} value={node.id}>{node.label || node.id}</option>)}
                 </select>
               </label>
               <label>
-                <span>To</span>
-                <select value={targetId} onChange={(event) => setTargetId(event.target.value)}>
+                <span id={`${connectionId}-to`}>To</span>
+                <select aria-labelledby={`${connectionId}-to`} value={targetId} onChange={(event) => setTargetId(event.target.value)}>
                   {nodes.map((node) => <option key={node.id} value={node.id}>{node.label || node.id}</option>)}
                 </select>
               </label>
@@ -294,7 +297,7 @@ export const Toolbar = ({
         </nav>
       </div>
       <div className="toolbar-settings">
-        <NumericDraftField className="toolbar-scale toolbar-horizon" label="Horizon (months)" value={horizonMonths} min={1} max={MAX_HORIZON_MONTHS} integer onCommit={onHorizonMonthsChange} />
+        <NumericDraftField resetKey={documentRevision} className="toolbar-scale toolbar-horizon" label="Horizon (months)" value={horizonMonths} min={1} max={MAX_HORIZON_MONTHS} integer onCommit={onHorizonMonthsChange} />
         <label className="toolbar-scale">
           <span>Node scale</span>
           <input type="range" min="0.5" max="2" step="0.05" value={nodeScale} onChange={(event) => onNodeScaleChange(Number(event.target.value))} />

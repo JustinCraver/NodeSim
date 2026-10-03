@@ -3,7 +3,8 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 type NumericDraftFieldProps = {
   label: string;
   value: number;
-  onCommit: (value: number) => void;
+  onCommit: (value: number) => boolean | string;
+  resetKey?: number | string;
   min?: number;
   max?: number;
   step?: number;
@@ -28,6 +29,7 @@ export const NumericDraftField = ({
   label,
   value,
   onCommit,
+  resetKey,
   min,
   max,
   step,
@@ -35,17 +37,16 @@ export const NumericDraftField = ({
   className,
 }: NumericDraftFieldProps) => {
   const inputId = useId();
+  const labelId = `${inputId}-label`;
   const errorId = `${inputId}-error`;
   const [draft, setDraft] = useState(String(value));
   const [error, setError] = useState<string>();
-  const [isEditing, setIsEditing] = useState(false);
   const skipBlurCommitRef = useRef(false);
 
   useEffect(() => {
-    if (!isEditing) {
-      setDraft(String(value));
-    }
-  }, [isEditing, value]);
+    setDraft(String(value));
+    setError(undefined);
+  }, [resetKey, value]);
 
   const commit = () => {
     const trimmed = draft.trim();
@@ -66,7 +67,11 @@ export const NumericDraftField = ({
       return false;
     }
     if (!Object.is(parsed, value)) {
-      onCommit(parsed);
+      const outcome = onCommit(parsed);
+      if (outcome === false || typeof outcome === 'string') {
+        setError(typeof outcome === 'string' ? outcome : `${label} could not be applied. Check the document warning.`);
+        return false;
+      }
     }
     setDraft(String(parsed));
     return true;
@@ -90,17 +95,17 @@ export const NumericDraftField = ({
 
   return (
     <label className={className} htmlFor={inputId}>
-      <span className="label">{label}</span>
+      <span className="label" id={labelId}>{label}</span>
       <input
         id={inputId}
         type="text"
         inputMode={integer ? 'numeric' : 'decimal'}
         value={draft}
+        aria-labelledby={labelId}
         aria-invalid={error ? 'true' : undefined}
         aria-describedby={error ? errorId : undefined}
         data-numeric-draft="true"
         data-uncommitted={draft !== String(value) ? 'true' : undefined}
-        onFocus={() => setIsEditing(true)}
         onChange={(event) => {
           setDraft(event.target.value);
           if (error) {
@@ -108,7 +113,6 @@ export const NumericDraftField = ({
           }
         }}
         onBlur={() => {
-          setIsEditing(false);
           if (skipBlurCommitRef.current) {
             skipBlurCommitRef.current = false;
           } else {

@@ -1,0 +1,8 @@
+{
+  "kind": "native-loopback-transport-fixture",
+  "status": "FAIL",
+  "productionAcceptance": false,
+  "checks": [],
+  "failure": "Installed OpenSSL used its compiled default config path Z:/extlib/_5040x__/ssl/openssl.cnf, which was absent; disposable certificate generation failed before any transport checks.",
+  "correction": "The runner now writes and passes an explicit disposable request config without changing machine OpenSSL configuration."
+}

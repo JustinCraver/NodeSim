@@ -37,15 +37,25 @@ if (Test-Path -LiteralPath $releaseDirectory) { throw "Artifact already exists: 
 npm.cmd run release:package
 ```
 
-Run packaging only when `artifacts/releases/nodesim-v<version>/` does not exist.
-The current script **deletes an existing output directory before copying**, in
-conflict with the immutable-version policy below. Until [R4](PROJECT_REVIEW.md#r4-immutable-release-packaging)
-is fixed, inspect the exact destination first. For another local verification,
-use a fresh, deliberately chosen directory under `artifacts/releases/`, for example
-`npm.cmd run release:package -- --output artifacts/releases/review-20260907` only
-if that directory is absent. Do not pass existing artifacts, the repository root,
-or overlapping source/output directories. This is an operational workaround,
-not an enforcement guarantee.
+Packaging now enforces a new destination strictly inside `artifacts/releases/`.
+Existing directories/files, path links, source/output overlaps, invalid/reserved
+path segments, unknown/duplicate options, and metadata overrides fail before
+writes. `--site` must resolve inside this repository; `--output` must be a fresh
+release directory. For local validation, choose a new name such as
+`npm.cmd run release:package -- --output artifacts/releases/review-20261002`.
+Only this run's owned stage/reservation is cleaned on failure; old artifacts stay
+intact. Copy/hash checks finish before exclusive output creation; the manifest
+is finalized last. A forced process termination can leave an incomplete owned
+stage/reservation; retain/inspect it before choosing a different fresh directory.
+
+`npm run build` records base path, package version, source Git revision/dirty
+state, and site-file hashes in `dist/nodesim-build.json`. Packaging requires that
+receipt, the exact production base, and matching package version/files. Running
+`vite build` directly produces no qualifying receipt. `NODESIM_BASE_PATH` builds
+are useful locally but a non-production base cannot be packaged as a release.
+Version/revision/dirty overrides are unsupported, including for historical files.
+Keep preceding releases and their original metadata; never reconstruct them from
+current source. See [R4](PROJECT_REVIEW.md#r4-immutable-release-packaging).
 
 `ci:verify` requires typecheck, lint, the deterministic regression suite, V8
 transformed-byte/function coverage thresholds, no duplicate major introduced by
@@ -54,8 +64,9 @@ HTTP smoke of `/NodeSim/` plus every generated asset and HTML entrypoint referen
 Coverage is aggregate transformed-source coverage of exercised core `.ts` modules;
 it does not measure React/TSX authoring or a real controller mount.
 
-The release manifest binds product, version, base path, source revision, dirty
-state, file sizes, and SHA-256 hashes. A production release requires
+The release manifest binds product, version, base path, build-recorded source
+revision/dirty state, file sizes, and SHA-256 hashes. `SHA256SUMS` includes site
+files and the release manifest itself. A production release requires
 `sourceDirty: false`; a dirty local artifact is validation evidence only.
 
 ## Recovery browser verification
@@ -122,10 +133,20 @@ HTTP must redirect to HTTPS before HSTS is accepted.
 The normal CI token is read-only. `deps:audit` and `deps:outdated` query the live
 registry and require the authorized environment. `deps:licenses` reads the
 lockfile and installed `package.json` files locally and sends no registry requests.
-It currently treats uninstalled optional packages for other platforms as failures;
-the September Windows run also flags `caniuse-lite`'s `CC-BY-4.0` license for review.
-See [R7](PROJECT_REVIEW.md#r7-dependency-review-signal). These are not evidence of a
-live vulnerability. Before dispatching **Authorized dependency review**:
+It reports known incompatible optional OS/CPU omissions separately; missing
+required/applicable installations, malformed manifests, mismatched installed
+versions, and unknown/nonallowlisted licenses still fail. The October Windows
+run reports 122 installed manifests, 22 expected omissions, and the remaining
+`caniuse-lite` / `CC-BY-4.0` license finding. This offline result does not establish
+current vulnerability status or a fresh clean-install result. See
+[R7](PROJECT_REVIEW.md#r7-dependency-review-signal).
+
+The authorized workflow retains an explicit **upgrade-required** outdated policy:
+any `npm outdated` finding fails its gate. There is no implicit reviewed exception
+or advisory/license waiver. A requested exception must first have an owner-approved
+policy specifying package/version, reason, expiry, and retained review evidence;
+that policy needs implementation before it can change a gate. The high/critical
+advisory gate stays unchanged. Before dispatching **Authorized dependency review**:
 
 1. Configure the GitHub `dependency-review` environment with required reviewers.
 2. Confirm the environment is authorized to transmit the lockfile's dependency
@@ -165,6 +186,95 @@ injects `security-headers.json`, including HSTS over local HTTP. That checks the
 contract/fixture, not TLS, HSTS acceptance, or origin configuration. The script
 does not execute JavaScript, check CSS imports, or accept a real-origin URL;
 unsupported options now fail instead of being silently ignored.
+New JSON smoke receipts explicitly identify their evidence kind as
+`synthetic-local`.
+
+## Consolidated browser verification
+
+The optional `browser:verify` command requires an already available Playwright
+runtime/browser and installs nothing. Start Vite at a dedicated loopback origin,
+then run from another terminal with a **fresh** output directory whose parent
+already exists:
+
+```powershell
+npm.cmd run dev -- --port 5199 --strictPort
+# Separate terminal; omit when Playwright is already resolvable:
+$env:PLAYWRIGHT_MODULE_PATH = '<absolute path to the available playwright package>'
+npm.cmd run browser:verify -- http://127.0.0.1:5199/NodeSim/ artifacts/browser-review-20261002
+```
+
+The command runs recovery, custom-port, numeric-draft, and general authoring suites
+serially, each with fresh browser contexts. It requires retained passing receipts,
+stops on failure, and keeps screenshots and the aggregate/subsuite results. It
+covers real React/Cytoscape keyboard add/connect/fields, valid and rejected
+commands, nested authored edits, root JSON import/export, exact history, actual
+autosave/reload, and desktop/390 px compact remount. Numeric checks cover invalid
+blur/Enter, parent rejection, Escape, external Undo/Redo, selection, horizon, and
+associated error text. Inspect retained desktop/compact screenshots.
+
+This local Chromium path is separate from `ci:verify` core coverage, hosted CI,
+and human acceptance. R3's instance-result assertions await its explicit view
+decision and implementation. Record manual screen-reader speech, OS file-picker
+behavior, and real-user compact label/semantic-alternative findings separately;
+automation and no overflow cannot grant those gates.
+
+For repeatable R10 profiling, use the same origin and a fresh output:
+
+```powershell
+node scripts/editor-profile-browser.mjs http://127.0.0.1:5199/NodeSim/ artifacts/editor-profile-20261002 --expect-optimized
+```
+
+This development-only runner instruments module responses in its isolated browser,
+imports a 153-node connected/two-level fixture, measures selection/field samples,
+and asserts one store per mount, stable same-scope node identity, preserved pan/zoom,
+and exact Undo/root export. It adds no product profiling globals. Measurements are
+local samples, separate from existing engine/store benchmarks.
+
+## Read-only real-origin verification
+
+After the host, clean candidate, dependencies, hosted CI, and manual gates are
+approved and deployment is explicitly authorized, verify the deployed bytes:
+
+```powershell
+npm.cmd run verify:origin -- --url https://<approved-host>/NodeSim/ --artifact artifacts/releases/nodesim-v<version> --output artifacts/origin-<version>-fresh.json
+```
+
+The command publishes nothing. It requires `sourceDirty: false`, exact `/NodeSim/`,
+matching local files and `SHA256SUMS` that also binds the manifest. It checks HTTP
+redirecting to the exact HTTPS entrypoint, authorized TLS, bounded same-origin/path
+redirects, every file's bytes/hash, entrypoint references, exact response headers,
+cache behavior, and conditional revalidation. Hashed `-<hex>.js/css` resources
+require public positive max-age plus immutable caching; HTML and unversioned
+resources (including `nodesim-build.json`) must revalidate or use no-store. A
+revalidation response must preserve security/cache policy and match the artifact
+or legitimately return 304. TLS disabling and evidence output inside the immutable
+artifact are rejected. Existing evidence files are preserved. Requests have a
+10-second ceiling within a 60-second verification deadline; failures retain a
+failure receipt when a fresh output was reserved.
+
+Both the candidate and preceding deployed immutable artifact need independent
+passing receipts bound to their manifest hashes. Historical artifacts lacking a
+manifest hash or clean provenance cannot meet this verifier's current contract;
+retain them without retrofitting metadata or claiming current acceptance. The
+October read-only Pages observation returned 404/mismatched headers and establishes
+no candidate/host/rollback acceptance. Host selection and deployment remain pending.
+
+An optional native transport fixture check supplements the mocked unit tests.
+It requires an already installed OpenSSL supporting `req -noenc/-addext` and
+installs nothing:
+
+```powershell
+node scripts/origin-transport-check.mjs artifacts/native-transport-fresh --openssl '<existing-openssl-executable>'
+```
+
+It creates temporary loopback certificates/keys from an explicit disposable config
+and trusts one fixture CA only in a disposable child process. It checks authorized
+TLS/body evidence, HTTP redirect location, untrusted-certificate rejection, the
+5 MiB streaming cap, and wall timeout under continuous streaming. All sockets and
+private fixture keys are cleaned. It changes no machine trust store or production
+verifier environment. The receipt is labeled `native-loopback-transport-fixture`
+with `productionAcceptance: false`; existing output is rejected. It is local
+transport evidence, not an actual candidate/preceding origin proof.
 
 ## CI artifact retention and versioning
 
@@ -191,10 +301,10 @@ Only after explicit authorization:
 3. Retain the currently deployed artifact as the rollback candidate.
 4. Publish `site/` without rebuilding it, mounted exactly at `/NodeSim/`.
 5. Configure the origin/edge to emit `deployment/security-headers.json`.
-6. Use a separate real-origin verifier to check the HTTPS entrypoint and every
-   referenced asset, response headers, redirects, TLS, and cache behavior. This
-   capability is not implemented by `smoke:deployed`; implementing it and choosing
-   an origin that supports the header contract remain [R6](PROJECT_REVIEW.md#r6-real-origin-release-proof).
+6. Run `verify:origin` against the immutable uploaded artifact, retaining its
+   hash-bound receipt. Choose an origin that emits the exact header/cache contract;
+   source or local synthetic smoke does not establish that capability. Actual
+   candidate/preceding proof remains [R6](PROJECT_REVIEW.md#r6-real-origin-release-proof).
 7. Grant GO only after dependency, manual accessibility, and product gates are
    also accepted.
 

@@ -1328,7 +1328,7 @@ export const createCytoscape = (
     selection?: DocumentSelection,
     nextSimulationSettings: SimulationSettingsV1 = simulationSettings,
   ) => {
-    const canReuseRenderedPositions =
+    const canReuseRenderedPositions = cy.nodes().length > 0 &&
       graphPath.length === nextGraphPath.length && graphPath.every((part, index) => part === nextGraphPath[index]);
     const renderedPositions = canReuseRenderedPositions
       ? new Map(cy.nodes().map((node) => [node.id(), { ...node.position() }]))
@@ -1341,25 +1341,57 @@ export const createCytoscape = (
     graphPath = Object.freeze([...nextGraphPath]);
     simulationSettings = { ...nextSimulationSettings };
     if (data.nodeScale !== undefined) {
-      nodeScale = Math.max(0.1, data.nodeScale);
-      applyNodeScale(nodeScale);
+      const nextScale = Math.max(0.1, data.nodeScale);
+      if (nextScale !== nodeScale || !canReuseRenderedPositions) {
+        nodeScale = nextScale;
+        applyNodeScale(nodeScale);
+      }
     }
     isProjecting = true;
     cy.batch(() => {
-      cy.elements().remove();
-      cy.add(projectedNodes.map((node) => toCyNodeElement(node)));
-      cy.add(data.edges.map((edge) => ({ data: edge })));
+      if (!canReuseRenderedPositions) {
+        cy.elements().remove();
+        cy.add(projectedNodes.map((node) => toCyNodeElement(node)));
+        cy.add(data.edges.map((edge) => ({ data: edge })));
+      } else {
+        const nodeIds = new Set(projectedNodes.map((node) => node.id));
+        const edgesById = new Map(data.edges.map((edge) => [edge.id, edge]));
+        cy.edges().filter((element) => {
+          const edge = edgesById.get(element.id());
+          return !edge || edge.source !== element.source().id() || edge.target !== element.target().id();
+        }).remove();
+        cy.nodes().filter((node) => !nodeIds.has(node.id())).remove();
+        projectedNodes.forEach((node) => {
+          const element = cy.getElementById(node.id);
+          if (element.empty()) cy.add(toCyNodeElement(node));
+          else {
+            // Clear removed authored/derived fields when kind/configuration changes.
+            // Stable elements retain renderer state, selection, and their viewport.
+            element.removeData();
+            element.data(toCyNodeElement(node).data);
+            if (node.position && hasValidPosition(node.position)) element.position(node.position);
+          }
+        });
+        data.edges.forEach((edge) => {
+          const element = cy.getElementById(edge.id);
+          if (element.empty()) cy.add({ data: edge });
+          else { element.removeData(); element.data(edge); }
+        });
+      }
     });
     runRecompute();
     const hasPositions = hasMeaningfulPositions(projectedNodes);
-    if (hasPositions) {
-      cy.layout({ name: 'preset' }).run();
-    } else {
-      cy.layout({ name: 'breadthfirst', directed: true, spacingFactor: 1.4 }).run();
+    if (!canReuseRenderedPositions) {
+      if (hasPositions) {
+        cy.layout({ name: 'preset', fit: false }).run();
+      } else {
+        cy.layout({ name: 'breadthfirst', directed: true, spacingFactor: 1.4, fit: false }).run();
+      }
     }
-    if (data.nodes.length > 0) {
+    if (data.nodes.length > 0 && !canReuseRenderedPositions) {
       cy.fit(undefined, 40);
     }
+    cy.elements(':selected').unselect();
     if (selection && selection.graphPath.length === graphPath.length && selection.graphPath.every((part, index) => part === graphPath[index])) {
       const element = cy.getElementById(selection.id);
       if (element && !element.empty()) {

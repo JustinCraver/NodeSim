@@ -130,6 +130,8 @@ document untouched.
 All numbers must remain finite. Current calculations use IEEE-754 and are a
 prototype; deterministic decimal/fixed-point money remains required before
 financial-decision use.
+The [proposed precision ADR](adr/0002-money-precision.md) is awaiting an explicit
+owner decision; it does not change current v1 computations or document formats.
 
 ## Autosave, recovery, and accessibility
 
@@ -236,9 +238,12 @@ silently repair imported files. See the [R2 receipt](PROJECT_REVIEW.md#r2-custom
   `0` inside while Savings Adjuster produces `1350` at root. The hierarchy also
   loses derived values for inactive scopes. Root computation and document export
   remain separate from this presentation gap. See [R3](PROJECT_REVIEW.md#r3-nested-computation-context).
-- **Numeric drafts:** an invalid entry blurred out of a field is replaced by the
-  last authored value while its error remains displayed. Escape cancels a draft.
-  See [R9](PROJECT_REVIEW.md#r9-numeric-draft-feedback).
+- **Numeric drafts:** Enter/blur validates and attempts one authored command.
+  Rejected text remains visible with its associated error, including a parent
+  command rejection. Escape restores the authored value and clears the error.
+  External authored revisions (Undo/Redo/import included) and scoped selection
+  changes reset drafts. These rules are shared by Inspector and horizon controls;
+  drafts remain outside saved/exported documents. See [R9](PROJECT_REVIEW.md#r9-numeric-draft-feedback).
 - **History:** undo/redo retains up to 100 commands in this session; history itself
   is not persisted. Node positions and root node scale are authored state; panel
   layout, theme, selection, and navigation are browser/session preferences.
@@ -260,6 +265,10 @@ to accepted store revisions, retains pending data, debounces writes, and manages
 conflict/retry state. The adapter emits commands for pointer edits and owns rendering
 resources through `ControllerLifecycle`; it is not the document authority.
 `graphScope.ts` addresses nested graphs with immutable arrays of custom-node IDs.
+Initial store/runtime resources are lazy per App mount. Same-scope hierarchy
+selection uses current derived data; authored revisions update stable rendered
+elements and preserve pan/zoom, while scope changes use a fresh layout. Root
+validation and command history retain their existing authority and limits.
 
 [`computeGraph.ts`](../src/engine/computeGraph.ts) evaluates a graph with explicit
 simulation settings, applies edge transforms, injects custom inputs during root
@@ -269,4 +278,7 @@ connections. [`tests/`](../tests) exercises these core seams; its lifecycle test
 use a fake graph. Focused R1 fault-injection and R2 custom-port browser commands
 are documented in the [runbook](RELEASE_OPERATIONS.md#recovery-browser-verification)
 and [authoring check](RELEASE_OPERATIONS.md#custom-port-browser-verification).
-They do not replace the broader Stage 7 authoring/accessibility acceptance matrix.
+The [consolidated browser command](RELEASE_OPERATIONS.md#consolidated-browser-verification)
+also covers numeric drafts, general authoring/files/history/reload/remount.
+R3's view decision and human Stage 7 accessibility/readability acceptance remain
+separate from local automation.

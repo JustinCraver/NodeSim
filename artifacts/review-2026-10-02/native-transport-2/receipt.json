@@ -1,0 +1,19 @@
+{
+  "kind": "native-loopback-transport-fixture",
+  "productionAcceptance": false,
+  "checks": [
+    "Native HTTP GET preserves the exact HTTPS redirect location",
+    "Native HTTPS GET verifies the process-local fixture CA and retains TLS/body evidence",
+    "An independent untrusted certificate is rejected without disabling TLS checks",
+    "Native streaming responses above 5 MiB are rejected",
+    "Continuous streaming cannot bypass the request wall deadline"
+  ],
+  "status": "PASS",
+  "tls": {
+    "authorized": true,
+    "fingerprint256": "8D:60:E2:E7:C8:15:B2:45:65:1E:4A:CC:8A:3B:68:9A:03:6F:D4:03:82:21:70:9C:61:AE:5E:39:E2:2B:43:2C",
+    "protocol": "TLSv1.3"
+  },
+  "slowRequestDeadlineMs": 250,
+  "observedSlowRequestMs": 259.9326
+}

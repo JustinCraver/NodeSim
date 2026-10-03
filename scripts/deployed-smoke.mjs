@@ -56,7 +56,7 @@ const server = createServer(async (request, response) => {
     const body = await readFile(absolute);
     response.writeHead(200, {
       ...headers,
-      'Cache-Control': relative === 'index.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
+      'Cache-Control': /-[0-9a-f]{8,}\.[A-Za-z0-9]+$/u.test(relative) ? 'public, max-age=31536000, immutable' : 'no-cache',
       'Content-Length': body.length,
       'Content-Type': contentTypes.get(path.extname(absolute)) ?? 'application/octet-stream',
     });
@@ -112,6 +112,7 @@ try {
 
   const evidence = {
     schemaVersion: 1,
+    kind: 'synthetic-local',
     product: 'NodeSim',
     expectedTitle,
     basePath,

@@ -80,8 +80,12 @@ Update the product guide for workflow/schema behavior, the release runbook for
 commands/artifacts, and the review when resolving a recorded gap. Change approved
 semantics only through an explicit product decision. Preserve dated evidence.
 
-Registry advisory/outdated checks need an authorized environment. The license
-script is offline but has recorded failures. Local smoke injects headers itself
-and cannot verify a real origin. Do not rerun `release:package` against an existing
-artifact: the current packager overwrites its output; follow the runbook's fresh
-output procedure until the reviewed packaging fix is implemented.
+Registry advisory/outdated checks need an authorized environment. The offline
+license command reports platform omissions separately and retains actionable
+failures. Local smoke injects headers and is synthetic evidence. `verify:origin`
+is read-only and requires a clean, hash-bound artifact plus an actual HTTPS host;
+its mocked tests do not grant deployment/rollback acceptance. Packaging requires
+the build provenance receipt and rejects existing/unsafe destinations and metadata
+overrides. Use a fresh path inside `artifacts/releases/` and preserve historical
+artifacts/receipts. `browser:verify` provides local Chromium regressions; human
+accessibility and R3's pending view decision remain separate. Follow the runbook.

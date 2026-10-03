@@ -21,6 +21,16 @@ Implementation is not blanket acceptance of every stage gate.
 | 7 | Toolbar/semantic tree, keyboard controls, compact tabs at 1100 px, and dated rendered evidence exist. Manual accessibility gates and repeatable browser regression coverage remain open. |
 | 8 | Existing CI/dependency workflows, local checks, budgets, smoke, packaging, and release docs exist. Hosted CI, current advisory review, real-origin headers/deployment, and production rollback were not verified by this review. |
 
+Follow-up 2026-10-02 on clean baseline `3edb13a`, including current uncommitted
+work: immutable packaging/build provenance (R4), numeric drafts (R9), and measured
+editor initialization/selection/projection changes (R10) are complete locally.
+The real-origin verifier, platform-aware offline license reporting, and one browser
+regression command are implemented. R3's view choice, the proposed R5 precision
+contract and implementation, remaining license/current registry review, hosted CI,
+human accessibility/readability, hosting/deployment and rollback acceptance remain
+pending. This task does not activate or grant a stage/release gate; dated audit
+and retained Stage 7/8 evidence remain unchanged.
+
 See [PROJECT_REVIEW.md](PROJECT_REVIEW.md) for current findings, verification,
 and proposed priorities, and [PRODUCT_GUIDE.md](PRODUCT_GUIDE.md) for current
 behavior. New review recommendations do not amend the approved ADR or activate

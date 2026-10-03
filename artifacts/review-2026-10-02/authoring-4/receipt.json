@@ -1,0 +1,7 @@
+{
+  "status": "FAIL",
+  "url": "http://127.0.0.1:5199/NodeSim/",
+  "checks": [],
+  "errors": [],
+  "failure": "locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByLabel('From', { exact: true }) to be visible\u001b[22m\n"
+}

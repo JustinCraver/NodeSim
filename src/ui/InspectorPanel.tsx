@@ -68,7 +68,7 @@ type InspectorPanelProps = {
   edge: EconEdgeData | null;
   onChange: (nodeId: string, data: Partial<EconNodeData>) => boolean;
   onChangeCustom: (nodeId: string, custom: CustomNodeConfig, mode: 'ports' | 'repair') => string | undefined;
-  onChangeEdge: (edgeId: string, data: Partial<EconEdgeData>) => void;
+  onChangeEdge: (edgeId: string, data: Partial<EconEdgeData>) => boolean;
   getNodeById: (nodeId: string) => EconNodeData | null;
   onDeleteNode: (nodeId: string) => void;
   onDeleteEdge: (edgeId: string) => void;
@@ -227,8 +227,8 @@ export const InspectorPanel = ({
             </select>
           </label>
         )}
-        <NumericDraftField className="panel-section" label="Weight" min={0} step={0.01} value={edge.weight ?? 1} onCommit={(value) => onChangeEdge(edge.id, { weight: value })} />
-        <NumericDraftField className="panel-section" label="Lag (months)" min={0} max={MAX_HORIZON_MONTHS} integer value={edge.lagMonths ?? 0} onCommit={(value) => onChangeEdge(edge.id, { lagMonths: value })} />
+        <NumericDraftField resetKey={documentRevision} className="panel-section" label="Weight" min={0} step={0.01} value={edge.weight ?? 1} onCommit={(value) => onChangeEdge(edge.id, { weight: value })} />
+        <NumericDraftField resetKey={documentRevision} className="panel-section" label="Lag (months)" min={0} max={MAX_HORIZON_MONTHS} integer value={edge.lagMonths ?? 0} onCommit={(value) => onChangeEdge(edge.id, { lagMonths: value })} />
         <div className="panel-section">
           <button
             type="button"
@@ -432,7 +432,7 @@ export const InspectorPanel = ({
       </label>
       {(activeNode.kind === 'income' || activeNode.kind === 'expense') && (
         <>
-          <NumericDraftField className="panel-section" label="Base value" value={activeNode.baseValue ?? 0} onCommit={(value) => onChange(activeNode.id, { baseValue: value })} />
+          <NumericDraftField resetKey={documentRevision} className="panel-section" label="Base value" value={activeNode.baseValue ?? 0} onCommit={(value) => onChange(activeNode.id, { baseValue: value })} />
           <label className="panel-section">
             <span className="label">Time Unit</span>
             <select value={activeNode.timeUnit ?? 'per_month'} onChange={handleTimeUnitChange}>
@@ -446,15 +446,15 @@ export const InspectorPanel = ({
         </>
       )}
       {activeNode.kind === 'value' && (
-        <NumericDraftField className="panel-section" label="Value" value={activeNode.baseValue ?? 0} onCommit={(value) => onChange(activeNode.id, { baseValue: value })} />
+        <NumericDraftField resetKey={documentRevision} className="panel-section" label="Value" value={activeNode.baseValue ?? 0} onCommit={(value) => onChange(activeNode.id, { baseValue: value })} />
       )}
       {(activeNode.kind === 'add' ||
         activeNode.kind === 'subtract' ||
         activeNode.kind === 'multiply' ||
         activeNode.kind === 'divide') && (
         <>
-          <NumericDraftField className="panel-section" label="Input 1 value" value={activeNode.leftValue ?? 0} onCommit={(value) => onChange(activeNode.id, { leftValue: value })} />
-          <NumericDraftField className="panel-section" label="Input 2 value" value={activeNode.rightValue ?? 0} onCommit={(value) => onChange(activeNode.id, { rightValue: value })} />
+          <NumericDraftField resetKey={documentRevision} className="panel-section" label="Input 1 value" value={activeNode.leftValue ?? 0} onCommit={(value) => onChange(activeNode.id, { leftValue: value })} />
+          <NumericDraftField resetKey={documentRevision} className="panel-section" label="Input 2 value" value={activeNode.rightValue ?? 0} onCommit={(value) => onChange(activeNode.id, { rightValue: value })} />
         </>
       )}
       {activeNode.kind === 'calc' && (
@@ -481,12 +481,12 @@ export const InspectorPanel = ({
       )}
       {activeNode.kind === 'asset' && (
         <>
-          <NumericDraftField className="panel-section" label="Initial balance" min={0} value={activeNode.initialBalance ?? 0} onCommit={(value) => onChange(activeNode.id, { initialBalance: value })} />
-          <NumericDraftField className="panel-section" label="Nominal annual rate" step={0.001} value={activeNode.interestRateAnnual ?? 0} onCommit={(value) => onChange(activeNode.id, { interestRateAnnual: value })} />
+          <NumericDraftField resetKey={documentRevision} className="panel-section" label="Initial balance" min={0} value={activeNode.initialBalance ?? 0} onCommit={(value) => onChange(activeNode.id, { initialBalance: value })} />
+          <NumericDraftField resetKey={documentRevision} className="panel-section" label="Nominal annual rate" step={0.001} value={activeNode.interestRateAnnual ?? 0} onCommit={(value) => onChange(activeNode.id, { interestRateAnnual: value })} />
         </>
       )}
       {activeNode.kind === 'output' && (
-        <NumericDraftField className="panel-section" label="Target amount" value={activeNode.targetAmount ?? 0} onCommit={(value) => onChange(activeNode.id, { targetAmount: value })} />
+        <NumericDraftField resetKey={documentRevision} className="panel-section" label="Target amount" value={activeNode.targetAmount ?? 0} onCommit={(value) => onChange(activeNode.id, { targetAmount: value })} />
       )}
       {activeNode.kind === 'custom' && customConfig && (
         <>

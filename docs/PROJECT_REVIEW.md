@@ -11,6 +11,29 @@ under R1 below. The original review verification table remains dated evidence.
 Follow-up 2026-10-02: R2 custom-port authoring is complete within the bounded
 engineering scope below. R3 is now the first unfinished recommendation.
 
+Follow-up 2026-10-02 (all unfinished items requested): R4, R9, and the bounded R10
+engineering work are complete locally. R6's read-only verifier, R7's platform-aware
+license reporting, and R8's consolidated browser command are implemented; their
+external/product/manual gates remain explicit. The precision design is proposed,
+not approved. Work includes uncommitted changes on `main` from clean baseline
+`3edb13a5b44ddb5d3276a600987901bc663d192b`.
+
+| Item | Current completion boundary |
+| --- | --- |
+| R3 | Pending owner choice: live instance inspection or isolated preview; no implementation decision assumed. |
+| R4 | Completed: staged/hash-verified packaging, exclusive destination creation, build provenance, unsafe-path/override rejection. |
+| R5 | [Precision contract](adr/0002-money-precision.md) prepared; explicit owner approval, implementation, and product acceptance pending. |
+| R6 | Verifier implemented and fault-tested. Actual host/candidate/preceding artifact proof, hosted CI, and authorized deployment/rollback pending. |
+| R7 | Platform omission reporting fixed. `CC-BY-4.0` owner review and authorized current registry/hosted review pending; upgrade-required outdated policy retained. |
+| R8 | One local browser command covers recovery, ports, numeric fields, general authoring/files/history/reload/remount. R3 live-context assertions and human screen-reader/OS-picker/readability acceptance pending. |
+| R9 | Completed: rejected drafts retain text/error; parent rejection, cancellation, external revisions, and scoped selection verified in the real UI. |
+| R10 | Completed: measured lazy initialization, stable same-scope elements/viewports, and selection without graph reprojection; exact history/export verified. |
+
+The [follow-up receipt](../artifacts/review-2026-10-02/README.md) preserves failures,
+verification, performance measurements, and pending decisions. No dependencies or
+lockfile, approved semantics, hosted workflows, or existing release artifacts were
+changed. No commit, push, publication, or deployment occurred.
+
 ## Assessment and scope
 
 This is a useful browser prototype with substantial working foundations:
@@ -80,20 +103,21 @@ Existing release artifacts were not repackaged or overwritten.
 
 ## Best next three actions
 
-R1 and R2 were implemented in their dated passes below. The next unfinished
-recommendations are:
+R1/R2 and the local R4/R9/R10 tasks were implemented in their dated passes. The
+next unfinished decisions/gates are:
 
 1. **R3: make nested inspection trustworthy**, so visible results and diagnostics
    agree with the root instance. Confirm whether nested views should display live
    instance results or an explicitly labeled isolated preview before implementing.
-2. **R4: make release packaging immutable**, before creating another candidate.
-3. **R5: define the approved precision contract**, before implementing decimal or
-   fixed-point money for financial-decision use.
+2. **R5: approve or revise the proposed precision contract**, then implement its
+   exact engine and document/migration requirements.
+3. **R6/R7/R8: supply the remaining external acceptance**, including a suitable
+   authorized host, clean hosted CI, current dependency/license review, and human
+   accessibility results before deployment/rollback proof.
 
-If packaging is the next task, do **R4 before creating another candidate**.
-Decimal representation/rounding and deployment hosting also need decisions before
-their respective implementations. None of these decisions blocks ordinary local
-development or the completed fixes in this review.
+R4 now enforces a fresh destination and the production build's recorded metadata.
+Decimal representation/rounding and hosting still need decisions. Ordinary local
+development and verification can continue while those choices are pending.
 
 ## Prioritized recommendations
 
@@ -214,6 +238,24 @@ versus an explicitly separate preview mode; preserve current root semantics.
 
 ### R4 Immutable release packaging
 
+**Completed 2026-10-02: bounded packaging engineering.** Packaging validates paths,
+source/provenance, version, and production base before writes; rejects existing
+destinations (including empty directories), links, overlaps, reserved/invalid
+path segments, unknown/duplicate arguments, and metadata overrides. Copying occurs
+in a fresh stage; input and staged hashes must still match before exclusive
+destination creation. The manifest is finalized last. Failures remove only this
+run's owned stage/reservation, preserving earlier artifacts.
+
+`npm run build` records actual base/version/Git revision/dirty state and file
+hashes in `nodesim-build.json`. Packaging requires that receipt and rejects changed
+or extra files. `SHA256SUMS` now also binds the release manifest. Historical
+metadata overrides are unsupported; retain preceding artifacts with their original
+receipts. Twenty-six subprocess/fault tests cover preservation, copy faults,
+competing writers, provenance, and invalid paths. Existing retained releases were
+neither repackaged nor overwritten. A dirty local build remains validation only.
+
+**Original finding (2026-09-07), retained for context:**
+
 **P1 before any new candidate · 0.5–1.5 days · source-confirmed; destructive path not executed.**
 `scripts/create-release.mjs` recursively removes `releaseRoot` before copying,
 including a caller-provided `--output`. It can overwrite the preceding artifact
@@ -231,6 +273,23 @@ work, not a reason to delete or regenerate existing release evidence.
 
 ### R5 Approved money precision
 
+**Design prepared 2026-10-02; owner decision still required.**
+[ADR 0002](adr/0002-money-precision.md) proposes BigInt fixed point, 12 fractional
+places for scalars/rates, cents for money, symmetric half-even rounding, explicit
+rounding boundaries/range, and a deliberate v2 upgrade retaining v1 calculations.
+It includes exact reference cases and migration/acceptance requirements. Approval
+was requested; no answer was assumed and no dependency or numeric/schema contract
+was changed. Implement only after the decision is recorded.
+
+Preparation continued on 2026-10-02: the [migration analysis](MONEY_PRECISION_MIGRATION.md)
+maps the current numeric/schema/store/UI seams, confirms an old-reader/new-schema
+storage risk in disposable memory, and proposes separate v2 storage slots. An
+independent Fraction/Decimal design oracle agrees on 2,418 monthly samples,
+including two 1,200-month cases and explicit range/divisor controls. The actual
+v1 engine observation retains the threshold difference (month 11 versus proposed
+month 10 for tenths contributions). These are draft design/compatibility evidence,
+not product approval, a new engine implementation, or financial acceptance.
+
 **P1 before financial-decision use · 3–7 days after design · accepted requirement, unimplemented.**
 `formula.ts` and `computeGraph.ts` use JavaScript numbers throughout. Finite checks
 prevent NaN/infinity, but do not implement the ADR's deterministic decimal or
@@ -245,6 +304,34 @@ acceptance recorded. Do not substitute display rounding for the numeric contract
 or choose a dependency before the representation decision.
 
 ### R6 Real-origin release proof
+
+**Verifier engineering implemented 2026-10-02; release proof remains pending.**
+`npm run verify:origin -- --url <https-origin>/NodeSim/ --artifact <release-dir>
+--output <fresh-receipt.json>` verifies a clean, locally hash-bound release,
+HTTP-to-HTTPS redirect, authorized TLS, same-origin/path redirects, every manifest
+file's bytes/hash, entrypoint references, exact response headers, resource cache
+policy, and conditional revalidation. The read-only command preserves existing
+receipts and rejects output inside the immutable artifact. Requests and the run
+have bounded deadlines; TLS disabling is rejected. Sixteen mock-transport/CLI
+fault tests are engineering evidence only.
+
+The [read-only target observation](../artifacts/review-2026-10-02/pages-origin-observation.json)
+returned HTTP/HTTPS 404 and no matching header contract at the documented Pages
+URL. It tested no candidate and grants no host acceptance. Local smoke receipts
+are labeled `synthetic-local`. The host decision, clean hosted candidate and
+preceding immutable artifact, dependency/manual gates, authorized publication,
+and production rollback proof remain open. Historical lists without a manifest
+hash cannot satisfy the new verifier; do not retrofit or regenerate them.
+
+The [native transport receipt](../artifacts/review-2026-10-02/native-transport-2/receipt.json)
+additionally verifies real loopback HTTP/TLS requests, process-local fixture trust,
+rejection of an independent untrusted certificate, the 5 MiB streaming limit, and
+a wall deadline during continuous streaming. Temporary certificates/keys and
+servers were cleaned; no machine trust store or production TLS setting changed.
+This strengthens transport engineering evidence while remaining a local fixture;
+the actual target/candidate/rollback requirements above are still pending.
+
+**Original finding (2026-09-07), retained for context:**
 
 **P1 for production · 1–2 days plus owner access · missing capability/evidence.**
 `deployed-smoke.mjs` only serves local files and supplies the expected headers
@@ -263,6 +350,25 @@ by this recommendation.
 
 ### R7 Dependency-review signal
 
+**Offline reporting engineering completed 2026-10-02; review acceptance pending.**
+The license command separates missing optional packages whose lockfile OS/CPU
+constraints exclude this host. Required/applicable missing packages, malformed
+manifests, installed-version mismatches, and unknown/nonallowlisted licenses
+still fail. Nine fixture regressions protect those distinctions. The current
+Windows installation reports 122 installed manifests, 22 expected omissions,
+and one remaining failure: `caniuse-lite@1.0.30001765: CC-BY-4.0`. No allowlist
+expansion, dependency upgrade, clean install, or registry review is implied.
+
+The existing release policy remains **upgrade required** for outdated packages:
+`npm outdated` finding updates fails the authorized dependency workflow. The
+high/critical advisory gate is unchanged. Unknown/nonallowlisted licenses require
+owner review. There is no implicit exception; any desired exception needs an
+explicit owner-approved policy with scope, rationale, expiry, and retained
+evidence before the gate changes. Live registry/hosted results and license
+acceptance remain required; no current advisory status is claimed.
+
+**Original finding (2026-09-07), retained for context:**
+
 **P2; required before release gate use · 0.5–1 day plus license review · confirmed offline failure.**
 `scripts/license-check.mjs` iterates every lockfile package and requires a local
 manifest even for optional packages incompatible with Windows. The current run
@@ -279,6 +385,24 @@ findings, required missing packages still fail, and authorized registry review
 has an explicit result/exception policy. No live advisory status was established.
 
 ### R8 Repeatable browser and accessibility verification
+
+**Repeatable local path implemented 2026-10-02; human/R3 acceptance pending.**
+`npm run browser:verify -- <dedicated-loopback-NodeSim-URL> <fresh-output-directory>`
+runs the existing recovery and custom-port suites plus shared numeric-draft and
+general authoring suites. Each uses fresh browser contexts; the aggregate command
+rejects existing output directories, requires passing retained subreceipts, stops
+on failure, and preserves useful failure screenshots/receipts. General workflows
+cover keyboard add/connect/fields, rejected candidates, nested authored edits,
+exact root file exports/imports/history, actual autosave/reload, and desktop/390 px
+remount. Connection pickers and numeric fields now have stable visible-label
+associations. See the [runbook](RELEASE_OPERATIONS.md#consolidated-browser-verification).
+
+This is optional Chromium local automation, separate from the Node-only coverage
+gate and hosted CI. R3 live-instance consistency assertions must be added after its
+decision/implementation. Manual screen-reader speech, native OS-picker behavior,
+and real-user compact-label/semantic-alternative assessment remain human gates.
+
+**Original finding (2026-09-07), retained for context:**
 
 **P2; manual acceptance remains a release gate · 1–3 days plus human checks · coverage gap.**
 `vitest.config.ts` runs Node tests; `controllerLifecycle.test.ts` uses `FakeGraph`.
@@ -297,6 +421,21 @@ and the semantic alternative with real users rather than inferring it from no ov
 
 ### R9 Numeric-draft feedback
 
+**Completed 2026-10-02: shared draft/commit engineering.** Invalid blur/Enter and
+rejected parent commands preserve draft text with its associated error. Successful
+commands normalize accepted text; Escape restores authored text and clears its
+error. External authored revisions (including Undo/Redo) and scoped selection
+changes discard local drafts consistently. Drafts stay outside exported/autosaved
+documents. Visible label identity is stable while error text changes.
+
+The original `-` → `4000` with a remaining error was reproduced before edits and
+retained. The focused real React/controller runner passes desktop and 390 px
+Inspector/horizon transitions, negative-expense parent rejection, history,
+selection reset, and error association; screenshots were inspected. Aggregate
+checks remain separately recorded in the follow-up receipt.
+
+**Original finding (2026-09-07), retained for context:**
+
 **P2 · 0.5–1 day · confirmed in browser.**
 `NumericDraftField.tsx` commits on blur, sets `isEditing` false, then restores the
 authored value even when validation failed. Entering `-` for income and tabbing
@@ -311,6 +450,24 @@ transitions. Verify the shared field in both Inspector and horizon controls;
 this should follow a focused UI test path rather than a one-off effect tweak.
 
 ### R10 Reduce repeated editor work before larger refactors
+
+**Completed 2026-10-02: measured bounded editor optimization.** Initial graph/store
+resources are lazy per mounted App. Same-scope hierarchy selection uses the current
+projection without constructing/recomputing a replacement. Authored revisions
+update stable Cytoscape elements, clear removed data, and recreate edges only when
+endpoints change; scope changes still get a fresh layout. Same-scope field/history
+edits preserve pan/zoom and use accepted document state.
+
+The isolated 153-node connected/two-level fixture measured 44 unused stores in the
+original selection/edit sequence, replaced node elements, and lost viewport state.
+The final run keeps one store, stable node identity, and exact viewport/Undo/export
+state; 11 selection actions add zero compute calls. Observed medians were selection
+174.7 → 168.6 ms and editing 146.6 → 133.4 ms in this run. These are local samples,
+not portable performance budgets. Existing full-root validation/history remain.
+Candidate-type computation was not profiled into a new cache or weakened gate;
+broader caching/module refactors remain unjustified by this measurement.
+
+**Original finding (2026-09-07), retained for context:**
 
 **P2 · 1–2 days · source-confirmed opportunity; rendered cost not measured.**
 `App.tsx` evaluates `graphDocumentToRuntimeGraph(...)` and constructs a new

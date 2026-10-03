@@ -1,0 +1,19 @@
+{
+  "result": "PASS",
+  "recordedAt": "2026-10-02T09:56:13.835Z",
+  "url": "http://127.0.0.1:5199/NodeSim/",
+  "browser": "151.0.7922.34",
+  "checks": [
+    "desktop: keyboard add input is atomic; rejected/uncommitted drafts do not export; unload protection and Undo/Redo work without creating nodes",
+    "desktop: keyboard adds a typed asset-series output, retains rejected identity text, connects it, and Undo restores removed port and edge",
+    "desktop: keyboard edits type plus binding for both directions, preserves IDs/compatible edges, and Undo restores type changes and input removal with edges",
+    "desktop: Cancel/Escape and external Undo discard drafts; real JSON file round trip passes; graph repair is explicit/atomic/undoable and strict Open still rejects malformed bindings",
+    "desktop: repeated local IDs stay scoped, scope changes discard port drafts, and nested authoring exports the complete root without horizontal overflow",
+    "compact: keyboard add input is atomic; rejected/uncommitted drafts do not export; unload protection and Undo/Redo work without creating nodes",
+    "compact: keyboard adds a typed asset-series output, retains rejected identity text, connects it, and Undo restores removed port and edge",
+    "compact: keyboard edits type plus binding for both directions, preserves IDs/compatible edges, and Undo restores type changes and input removal with edges",
+    "compact: Cancel/Escape and external Undo discard drafts; real JSON file round trip passes; graph repair is explicit/atomic/undoable and strict Open still rejects malformed bindings",
+    "compact: repeated local IDs stay scoped, scope changes discard port drafts, and nested authoring exports the complete root without horizontal overflow"
+  ],
+  "errors": []
+}

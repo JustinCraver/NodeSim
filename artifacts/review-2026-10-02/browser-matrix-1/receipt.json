@@ -1,0 +1,28 @@
+{
+  "status": "PASS",
+  "kind": "local-browser-regression",
+  "url": "http://127.0.0.1:5199/NodeSim/",
+  "results": [
+    {
+      "suite": "recovery",
+      "code": 0,
+      "signal": null
+    },
+    {
+      "suite": "custom-ports",
+      "code": 0,
+      "signal": null
+    },
+    {
+      "suite": "numeric-draft",
+      "code": 0,
+      "signal": null
+    },
+    {
+      "suite": "authoring",
+      "code": 0,
+      "signal": null
+    }
+  ],
+  "manualAccessibility": "pending human acceptance"
+}

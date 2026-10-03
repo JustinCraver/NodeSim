@@ -376,8 +376,12 @@ const getInitialCompactMode = () =>
 
 export const App = () => {
   const [initialDocumentState] = useState<InitialDocumentState>(loadInitialDocument);
-  const initialGraphRef = useRef<GraphData>(graphDocumentToRuntimeGraph(initialDocumentState.document));
-  const storeRef = useRef<GraphDocumentStore>(new GraphDocumentStore(initialDocumentState.document));
+  const [initialResources] = useState(() => ({
+    graph: graphDocumentToRuntimeGraph(initialDocumentState.document),
+    store: new GraphDocumentStore(initialDocumentState.document),
+  }));
+  const initialGraphRef = useRef<GraphData>(initialResources.graph);
+  const storeRef = useRef<GraphDocumentStore>(initialResources.store);
   const [storeSnapshot, setStoreSnapshot] = useState<DocumentStoreSnapshot>(storeRef.current.getSnapshot());
   const storageRef = useRef(initialDocumentState.storage);
   const autosaveRef = useRef<AutosaveSession | null>(null);
@@ -785,7 +789,7 @@ export const App = () => {
   const handleEdgeChange = (edgeId: string, data: Partial<EconEdgeData>) => {
     const controller = controllerRef.current;
     if (!controller) {
-      return;
+      return false;
     }
     const path = currentGraphPath(viewStackRef.current);
     const currentGraph = getGraphAtPath(
@@ -794,7 +798,7 @@ export const App = () => {
     );
     const currentEdge = currentGraph.edges.find((edge) => edge.id === edgeId);
     if (!currentEdge) {
-      return;
+      return false;
     }
     const candidate = { ...currentEdge, ...data };
     const validation = validateConnection(
@@ -804,9 +808,9 @@ export const App = () => {
     );
     if (!validation.valid) {
       setDocumentStatus(`Connection rejected: ${validation.reason}`);
-      return;
+      return false;
     }
-    executeCommand(
+    return executeCommand(
       { type: 'update-edge', graphPath: path, edgeId, changes: data },
       { graphPath: path, kind: 'edge', id: edgeId, focus: true },
     );
@@ -894,6 +898,16 @@ export const App = () => {
     if (!controller) {
       return;
     }
+    if (graphPathsEqual(identity.graphPath, currentGraphPath(viewStackRef.current))) {
+      if (!selectNode(identity.nodeId)) return;
+      const data = controller.cy.getElementById(identity.nodeId).data() as EconNodeData;
+      setSelectedNode({ ...data });
+      setSelectedEdge(null);
+      setSelectedIdentity(identity);
+      if (isHierarchyFocusEnabled) scheduleFrame(() => focusNode(identity.nodeId));
+      if (isCompactWorkspace) setActiveCompactTab('inspector');
+      return;
+    }
     const rootGraph = graphDocumentToRuntimeGraph(storeRef.current.getSnapshot().document);
     const nextStack = buildViewStack(rootGraph, identity.graphPath);
     const targetGraph = getGraphAtPath(rootGraph, identity.graphPath);
@@ -936,6 +950,14 @@ export const App = () => {
       if (isCompactWorkspace) {
         setActiveCompactTab('graph');
       }
+      return;
+    }
+    if (graphPathsEqual(graphPath, currentGraphPath(viewStackRef.current))) {
+      const element = controller.cy.getElementById(edgeId);
+      if (element.empty()) return;
+      controller.cy.elements(':selected').unselect();
+      element.select();
+      if (isCompactWorkspace) setActiveCompactTab('inspector');
       return;
     }
     const rootGraph = graphDocumentToRuntimeGraph(storeRef.current.getSnapshot().document);
@@ -1098,12 +1120,13 @@ export const App = () => {
                 executeCommand({ type: 'set-node-scale', nodeScale: value * DEFAULT_NODE_SCALE })
               }
               horizonMonths={simulationSettings.horizonMonths}
+              documentRevision={storeSnapshot.revision}
               onHorizonMonthsChange={(value) => {
                 if (!Number.isInteger(value) || value < 1 || value > MAX_HORIZON_MONTHS) {
                   setDocumentStatus(`Horizon must be a whole number from 1 to ${MAX_HORIZON_MONTHS}.`);
-                  return;
+                  return false;
                 }
-                executeCommand({
+                return executeCommand({
                   type: 'set-simulation-settings',
                   settings: { ...simulationSettings, horizonMonths: value },
                 });
@@ -1164,6 +1187,7 @@ export const App = () => {
     return (
       <WorkspacePanel title={panel.title} isClosable={!isCompactPanel} onClose={() => handleClosePanel(panel.id)}>
         <InspectorPanel
+          key={JSON.stringify([activeGraphPath, selectedNode?.id ?? null, selectedEdge?.id ?? null])}
           node={selectedNode}
           edge={selectedEdge}
           onChange={handleNodeChange}

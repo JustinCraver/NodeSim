@@ -1,0 +1,17 @@
+{
+  "status": "PASS",
+  "url": "http://127.0.0.1:5199/NodeSim/",
+  "browser": "151.0.7922.34",
+  "checks": [
+    "desktop: keyboard add/fields, rejected/accepted connections, exact history exports",
+    "desktop: nested edits, root file round trip, persisted reload",
+    "desktop: desktop/compact remount with exact root preservation",
+    "compact: keyboard add/fields, rejected/accepted connections, exact history exports",
+    "compact: nested edits, root file round trip, persisted reload",
+    "compact: desktop/compact remount with exact root preservation"
+  ],
+  "errors": [],
+  "manualScreenReader": "pending human acceptance",
+  "osPicker": "pending human acceptance",
+  "compactReadability": "pending real-user assessment"
+}

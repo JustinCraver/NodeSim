@@ -1,0 +1,36 @@
+{
+  "kind": "read-only host observation, not candidate acceptance",
+  "rows": [
+    {
+      "url": "http://justincraver.github.io/NodeSim/",
+      "status": 404,
+      "securityHeaders": {
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'",
+        "Cross-Origin-Opener-Policy": null,
+        "Permissions-Policy": null,
+        "Referrer-Policy": null,
+        "Strict-Transport-Security": null,
+        "X-Content-Type-Options": null,
+        "X-Frame-Options": null
+      }
+    },
+    {
+      "url": "https://justincraver.github.io/NodeSim/",
+      "status": 404,
+      "tls": {
+        "authorized": true,
+        "fingerprint256": "71:F1:07:7D:B3:77:FD:7B:8D:68:38:0D:A6:6F:A6:82:38:A3:03:B2:91:1B:CB:77:0B:3B:2A:42:66:93:CF:84",
+        "protocol": "TLSv1.3"
+      },
+      "securityHeaders": {
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'",
+        "Cross-Origin-Opener-Policy": null,
+        "Permissions-Policy": null,
+        "Referrer-Policy": null,
+        "Strict-Transport-Security": null,
+        "X-Content-Type-Options": null,
+        "X-Frame-Options": null
+      }
+    }
+  ]
+}

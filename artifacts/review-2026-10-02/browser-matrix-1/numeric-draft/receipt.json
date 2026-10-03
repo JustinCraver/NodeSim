@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "url": "http://127.0.0.1:5199/NodeSim/",
+  "browser": "151.0.7922.34",
+  "checks": [
+    "desktop: rejected blur/Enter, cancellation, parent rejection, external history, and selection reset",
+    "desktop: shared horizon draft/commit/history contract",
+    "compact: rejected blur/Enter, cancellation, parent rejection, external history, and selection reset",
+    "compact: shared horizon draft/commit/history contract"
+  ],
+  "errors": []
+}
